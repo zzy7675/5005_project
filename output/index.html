@@ -1,0 +1,1239 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Oceanus Folk: Then-and-Now — Sailor Shift Visual Analytics</title>
+<script src="https://d3js.org/d3.v7.min.js"></script>
+<style>
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  body { font-family: 'Segoe UI', Arial, sans-serif; background: #1a1a2e; color: #e0e0e0; height: 100vh; display: flex; flex-direction: column; overflow: hidden; }
+
+  /* ── Control Panel ── */
+  #control-panel {
+    background: #16213e;
+    border-bottom: 2px solid #0f3460;
+    padding: 8px 16px;
+    display: flex;
+    align-items: center;
+    gap: 20px;
+    flex-wrap: wrap;
+    min-height: 56px;
+    z-index: 100;
+  }
+  #control-panel h1 { font-size: 14px; color: #e94560; white-space: nowrap; font-weight: 700; letter-spacing: 0.5px; }
+  .ctrl-group { display: flex; align-items: center; gap: 6px; }
+  .ctrl-label { font-size: 11px; color: #a0a0c0; white-space: nowrap; }
+  .ctrl-group select, .ctrl-group input[type=range] { background: #0f3460; color: #e0e0e0; border: 1px solid #e94560; border-radius: 4px; padding: 2px 6px; font-size: 11px; }
+  .ctrl-group input[type=range] { width: 100px; accent-color: #e94560; }
+  .filter-btn { background: #0f3460; border: 1px solid #4a4a7a; color: #c0c0e0; border-radius: 3px; padding: 2px 7px; font-size: 10px; cursor: pointer; transition: all 0.2s; }
+  .filter-btn.active { background: #e94560; border-color: #e94560; color: #fff; }
+  .toggle-btn { background: #0f3460; border: 1px solid #e94560; color: #e0e0e0; border-radius: 4px; padding: 3px 10px; font-size: 11px; cursor: pointer; }
+  .toggle-btn.on { background: #e94560; color: #fff; }
+  #decade-range-display { font-size: 11px; color: #e94560; min-width: 80px; }
+
+  /* ── Main Layout ── */
+  #main-layout {
+    display: flex;
+    flex: 1;
+    overflow: hidden;
+  }
+
+  /* ── Left: Force Graph ── */
+  #graph-panel {
+    flex: 0 0 50%;
+    position: relative;
+    border-right: 2px solid #0f3460;
+    background: #0d0d1a;
+  }
+  #graph-svg { width: 100%; height: 100%; }
+  #graph-title { position: absolute; top: 8px; left: 12px; font-size: 12px; color: #a0a0c0; pointer-events: none; }
+  #graph-legend { position: absolute; bottom: 8px; left: 8px; background: rgba(22,33,62,0.92); border: 1px solid #0f3460; border-radius: 6px; padding: 8px 10px; font-size: 10px; }
+  .legend-item { display: flex; align-items: center; gap: 5px; margin-bottom: 3px; }
+  .legend-dot { width: 10px; height: 10px; border-radius: 50%; flex-shrink: 0; }
+  .legend-line { width: 18px; height: 3px; flex-shrink: 0; }
+  #graph-info { position: absolute; top: 8px; right: 8px; background: rgba(22,33,62,0.95); border: 1px solid #e94560; border-radius: 6px; padding: 10px 12px; font-size: 11px; max-width: 220px; display: none; }
+  #graph-info h3 { color: #e94560; margin-bottom: 6px; font-size: 12px; }
+  #graph-info .info-row { margin-bottom: 3px; }
+  #graph-info .info-key { color: #a0a0c0; }
+  #box-select-hint { position: absolute; bottom: 8px; right: 8px; font-size: 10px; color: #606080; }
+
+  /* ── Right panels ── */
+  #right-panels {
+    flex: 1;
+    display: flex;
+    flex-direction: column;
+    overflow: hidden;
+  }
+
+  /* ── Top-Right: Timeline ── */
+  #timeline-panel {
+    flex: 0 0 52%;
+    border-bottom: 2px solid #0f3460;
+    background: #0d0d1a;
+    padding: 8px;
+    overflow-y: auto;
+    overflow-x: hidden;
+    position: relative;
+  }
+  #timeline-title { font-size: 12px; color: #a0a0c0; margin-bottom: 4px; }
+  #timeline-svg { width: 100%; display: block; }
+
+  /* ── Bottom-Right: Linkage ── */
+  #linkage-panel {
+    flex: 0 0 48%;
+    background: #0d0d1a;
+    padding: 8px;
+    overflow-y: auto;
+    overflow-x: hidden;
+    position: relative;
+  }
+  #linkage-title { font-size: 12px; color: #a0a0c0; margin-bottom: 4px; }
+  #linkage-svg { width: 100%; min-height: 280px; height: calc(100% - 24px); }
+  #linkage-hint { position: absolute; top: 50%; left: 50%; transform: translate(-50%,-50%); color: #404060; font-size: 13px; text-align: center; pointer-events: none; }
+
+  /* ── Tooltip ── */
+  #tooltip {
+    position: fixed;
+    background: rgba(22,33,62,0.97);
+    border: 1px solid #e94560;
+    border-radius: 6px;
+    padding: 8px 12px;
+    font-size: 11px;
+    pointer-events: none;
+    display: none;
+    z-index: 9999;
+    max-width: 240px;
+  }
+  #tooltip strong { color: #e94560; display: block; margin-bottom: 4px; }
+
+  /* ── Box selection ── */
+  .brush-rect { fill: rgba(233,69,96,0.1); stroke: #e94560; stroke-width: 1px; stroke-dasharray: 4; }
+
+  /* Scrollbar */
+  ::-webkit-scrollbar { width: 4px; }
+  ::-webkit-scrollbar-track { background: #0d0d1a; }
+  ::-webkit-scrollbar-thumb { background: #0f3460; border-radius: 2px; }
+</style>
+</head>
+<body>
+
+<!-- ══════════════════════════════════════════════════════════
+     GLOBAL CONTROL PANEL
+══════════════════════════════════════════════════════════ -->
+<div id="control-panel">
+  <h1>🌊 Oceanus Folk: Then-and-Now</h1>
+
+  <!-- Decade range -->
+  <div class="ctrl-group">
+    <span class="ctrl-label">Decade:</span>
+    <input type="range" id="decade-min" min="1960" max="2040" step="10" value="1960">
+    <span>–</span>
+    <input type="range" id="decade-max" min="1960" max="2040" step="10" value="2040">
+    <span id="decade-range-display">1960s – 2040s</span>
+  </div>
+
+  <!-- Node type filters -->
+  <div class="ctrl-group">
+    <span class="ctrl-label">Nodes:</span>
+    <button class="filter-btn active" data-type="node" data-val="Person">Person</button>
+    <button class="filter-btn active" data-type="node" data-val="Song">Song</button>
+    <button class="filter-btn active" data-type="node" data-val="Album">Album</button>
+    <button class="filter-btn active" data-type="node" data-val="MusicalGroup">Group</button>
+    <button class="filter-btn active" data-type="node" data-val="RecordLabel">Label</button>
+  </div>
+
+  <!-- Role filters -->
+  <div class="ctrl-group">
+    <span class="ctrl-label">Roles:</span>
+    <button class="filter-btn active" data-type="role" data-val="sailor">Sailor</button>
+    <button class="filter-btn active" data-type="role" data-val="sailor_work">Her Works</button>
+    <button class="filter-btn active" data-type="role" data-val="collaborator">Collaborators</button>
+    <button class="filter-btn active" data-type="role" data-val="influence_source">Infl. Sources</button>
+    <button class="filter-btn active" data-type="role" data-val="new_gen_artist">New-Gen Artists</button>
+  </div>
+
+  <!-- Notable toggle -->
+  <div class="ctrl-group">
+    <span class="ctrl-label">Notable only:</span>
+    <button class="toggle-btn" id="notable-toggle">OFF</button>
+  </div>
+
+</div>
+
+<!-- ══════════════════════════════════════════════════════════
+     MAIN LAYOUT
+══════════════════════════════════════════════════════════ -->
+<div id="main-layout">
+
+  <!-- LEFT: Force-Directed Graph -->
+  <div id="graph-panel">
+    <div id="graph-title">Sailor Shift Ego Network — click node to explore, drag to pan, scroll to zoom</div>
+    <svg id="graph-svg"></svg>
+    <div id="graph-legend">
+      <div style="font-size:11px;color:#e94560;margin-bottom:5px;font-weight:700;">Node Types (fill)</div>
+      <div class="legend-item"><div class="legend-dot" style="background:#4e79a7"></div>Person</div>
+      <div class="legend-item"><div class="legend-dot" style="background:#f28e2b"></div>Song</div>
+      <div class="legend-item"><div class="legend-dot" style="background:#e15759"></div>Album</div>
+      <div class="legend-item"><div class="legend-dot" style="background:#59a14f"></div>MusicalGroup</div>
+      <div class="legend-item"><div class="legend-dot" style="background:#76b7b2"></div>RecordLabel</div>
+      <div style="font-size:11px;color:#e94560;margin:6px 0 4px;font-weight:700;">Roles (ring)</div>
+      <div class="legend-item"><div class="legend-dot" style="background:#606080;border:4px solid #ffffff"></div>Sailor Shift</div>
+      <div class="legend-item"><div class="legend-dot" style="background:#606080;border:2.5px solid #ff00ff"></div>Her Works</div>
+      <div class="legend-item"><div class="legend-dot" style="background:#606080;border:2px solid #00ffff"></div>Collaborator</div>
+      <div class="legend-item"><div class="legend-dot" style="background:#606080;border:2px solid #39ff14"></div>Infl. Source</div>
+      <div class="legend-item"><div class="legend-dot" style="background:#606080;border:2px solid #ff1493"></div>New-Gen Artist</div>
+    </div>
+    <div id="graph-info">
+      <h3 id="info-name">—</h3>
+      <div id="info-body"></div>
+    </div>
+    <div id="box-select-hint">Shift+left-drag to box-select · click selected node to deselect</div>
+  </div>
+
+  <!-- RIGHT PANELS -->
+  <div id="right-panels">
+
+    <!-- TOP-RIGHT: Temporal Evolution -->
+    <div id="timeline-panel">
+      <div id="timeline-title">📊 Temporal Evolution — Works per Decade (click bar to filter graph)</div>
+      <svg id="timeline-svg"></svg>
+    </div>
+
+    <!-- BOTTOM-RIGHT: Context Panel -->
+    <div id="linkage-panel">
+      <div id="linkage-title">🔗 Detailed View — click a node in the graph to explore</div>
+      <svg id="linkage-svg"></svg>
+      <div id="linkage-hint">Click any node in the force graph<br>
+        <span style="color:#e9c46a">★ Sailor</span> → OF community influence chart<br>
+        <span style="color:#4e79a7">●</span> Collaborator → their works<br>
+        <span style="color:#b07aa1">●</span> Infl. Source → what influenced Sailor<br>
+        <span style="color:#e9c46a">●</span> New-Gen Artist → their OF debut info
+      </div>
+    </div>
+
+  </div>
+</div>
+
+<div id="tooltip"></div>
+
+<!-- ══════════════════════════════════════════════════════════
+     JAVASCRIPT
+══════════════════════════════════════════════════════════ -->
+<script>
+// ─────────────────────────────────────────────────────────────
+// CONSTANTS & STATE
+// ─────────────────────────────────────────────────────────────
+const NODE_COLORS = {
+  Person: '#4e79a7', Song: '#f28e2b', Album: '#e15759',
+  RecordLabel: '#76b7b2', MusicalGroup: '#59a14f', unknown: '#bab0ac'
+};
+const EDGE_COLORS = {
+  PerformerOf: '#4e79a7', ComposerOf: '#f28e2b', LyricistOf: '#e15759',
+  ProducerOf: '#76b7b2', RecordedBy: '#59a14f', DistributedBy: '#edc948',
+  MemberOf: '#b07aa1', InStyleOf: '#ff9da7', InterpolatesFrom: '#9c755f',
+  CoverOf: '#bab0ac', LyricalReferenceTo: '#d37295', DirectlySamples: '#a0cbe8',
+  unknown: '#cccccc'
+};
+const ROLE_SIZE = {
+  sailor: 28, sailor_work: 16, collaborator: 12,
+  influence_source: 8, new_gen_artist: 10, other: 6
+};
+// Role → ring (stroke) color & width — chosen to contrast all node-type fills
+const ROLE_STROKE = {
+  sailor:           { color: '#ffffff', width: 4 },   // white
+  sailor_work:      { color: '#ff00ff', width: 2.5 }, // magenta
+  collaborator:     { color: '#00ffff', width: 2 },   // cyan
+  influence_source: { color: '#39ff14', width: 2 },   // neon green (high contrast vs orange Song fill)
+  new_gen_artist:   { color: '#ff1493', width: 2 },   // deep pink
+  other:            { color: 'none',    width: 0 },
+};
+
+const ALL_ROLES = new Set([
+  'sailor','sailor_work','collaborator',
+  'influence_source','new_gen_artist','other'
+]);
+
+const state = {
+  activeNodeTypes: new Set(['Person','Song','Album','MusicalGroup','RecordLabel']),
+  activeRoles: new Set(ALL_ROLES),
+  decadeMin: 1960, decadeMax: 2040,
+  genre: 'all',
+  notableOnly: false,
+  selectedNode: null,
+  highlightedNodes: new Set(),
+  selectedDecade: null,
+  egoData: null,
+  timelineData: null,
+  linkageData: null,
+  ofCommunityData: null,
+};
+
+// ─────────────────────────────────────────────────────────────
+// TOOLTIP
+// ─────────────────────────────────────────────────────────────
+const tooltip = d3.select('#tooltip');
+function showTooltip(event, html) {
+  tooltip.style('display','block').html(html);
+  // Clamp to viewport
+  const node = tooltip.node();
+  const tw = node.offsetWidth, th = node.offsetHeight;
+  let left = event.clientX + 14;
+  let top  = event.clientY - 10;
+  if (left + tw > window.innerWidth  - 8) left = event.clientX - tw - 14;
+  if (top  + th > window.innerHeight - 8) top  = event.clientY - th - 10;
+  if (left < 4) left = 4;
+  if (top  < 4) top  = 4;
+  tooltip.style('left', left+'px').style('top', top+'px');
+}
+function hideTooltip() { tooltip.style('display','none'); }
+
+// ─────────────────────────────────────────────────────────────
+// LOAD DATA
+// ─────────────────────────────────────────────────────────────
+Promise.all([
+  d3.json('d3_main_graph.json').catch(()=>null),
+  d3.json('d3_influence_network.json').catch(()=>null),
+  d3.json('d3_timeline.json').catch(()=>null),
+  d3.json('d3_linkage.json').catch(()=>null),
+  d3.json('d3_of_community.json').catch(()=>null),
+  d3.json('d3_sailor_influences.json').catch(()=>null),
+]).then(([ego, influence, timeline, linkage, ofCommunity, sailorInfluences]) => {
+  state.egoData = ego;
+  state.influenceData = influence;
+  state.timelineData = timeline;
+  state.linkageData = linkage;
+  state.ofCommunityData = ofCommunity;
+  state.sailorInfluencesData = sailorInfluences;
+
+  initControls();
+  renderTimeline();
+  renderGraph();
+});
+
+// ─────────────────────────────────────────────────────────────
+// CONTROLS
+// ─────────────────────────────────────────────────────────────
+function initControls() {
+  // Filter buttons
+  document.querySelectorAll('.filter-btn').forEach(btn => {
+    btn.addEventListener('click', () => {
+      btn.classList.toggle('active');
+      const type = btn.dataset.type, val = btn.dataset.val;
+      if (type === 'node') {
+        if (state.activeNodeTypes.has(val)) state.activeNodeTypes.delete(val);
+        else state.activeNodeTypes.add(val);
+      } else if (type === 'role') {
+        if (state.activeRoles.has(val)) state.activeRoles.delete(val);
+        else state.activeRoles.add(val);
+      }
+      renderGraph();
+    });
+  });
+
+  // Decade sliders
+  const dMin = document.getElementById('decade-min');
+  const dMax = document.getElementById('decade-max');
+  const dDisplay = document.getElementById('decade-range-display');
+  function updateDecade() {
+    let mn = +dMin.value, mx = +dMax.value;
+    if (mn > mx) { [mn,mx] = [mx,mn]; dMin.value=mn; dMax.value=mx; }
+    state.decadeMin = mn; state.decadeMax = mx;
+    dDisplay.textContent = `${mn}s – ${mx}s`;
+    renderGraph(); renderTimeline();
+  }
+  dMin.addEventListener('input', updateDecade);
+  dMax.addEventListener('input', updateDecade);
+
+  // Notable toggle
+  const notableBtn = document.getElementById('notable-toggle');
+  notableBtn.addEventListener('click', () => {
+    state.notableOnly = !state.notableOnly;
+    notableBtn.textContent = state.notableOnly ? 'ON' : 'OFF';
+    notableBtn.classList.toggle('on', state.notableOnly);
+    renderGraph();
+  });
+}
+
+// ─────────────────────────────────────────────────────────────
+// FORCE-DIRECTED GRAPH
+// ─────────────────────────────────────────────────────────────
+let simulation = null;
+let graphSvg = null, graphG = null;
+let savedZoomTransform = null;
+
+function renderGraph() {
+  const rawData = state.egoData;
+  if (!rawData) return;
+
+  const panel = document.getElementById('graph-panel');
+  const W = panel.clientWidth, H = panel.clientHeight;
+
+  // Filter nodes
+  const filteredNodes = rawData.nodes.filter(n => {
+    if (!state.activeNodeTypes.has(n.type)) return false;
+    if (!state.activeRoles.has(n.role || 'other')) return false;
+    if (state.notableOnly && n.type !== 'Person' && n.type !== 'MusicalGroup' && n.type !== 'RecordLabel') {
+      if (!n.notable) return false;
+    }
+    if (n.release_date) {
+      const yr = +n.release_date;
+      const dec = Math.floor(yr/10)*10;
+      if (dec < state.decadeMin || dec > state.decadeMax) return false;
+    }
+    return true;
+  });
+  const nodeIds = new Set(filteredNodes.map(n=>n.id));
+
+  // Filter edges (keep all edge types; filter only by endpoint visibility)
+  const filteredLinks = rawData.links.filter(l => {
+    const src = typeof l.source === 'object' ? l.source.id : l.source;
+    const tgt = typeof l.target === 'object' ? l.target.id : l.target;
+    return nodeIds.has(src) && nodeIds.has(tgt);
+  });
+
+  // Deep copy for simulation
+  const nodes = filteredNodes.map(n => ({...n}));
+  const links = filteredLinks.map(l => ({
+    ...l,
+    source: typeof l.source === 'object' ? l.source.id : l.source,
+    target: typeof l.target === 'object' ? l.target.id : l.target,
+  }));
+
+  // Save current zoom transform before clearing
+  if (graphSvg && graphSvg.node()) {
+    savedZoomTransform = d3.zoomTransform(graphSvg.node());
+  }
+
+  // Clear & rebuild SVG
+  d3.select('#graph-svg').selectAll('*').remove();
+  graphSvg = d3.select('#graph-svg').attr('width', W).attr('height', H);
+
+  // Defs: arrowheads per edge color
+  const defs = graphSvg.append('defs');
+  const arrowColors = [...new Set(links.map(l=>EDGE_COLORS[l.type]||EDGE_COLORS.unknown))];
+  arrowColors.forEach(color => {
+    const id = 'arrow-' + color.replace('#','');
+    defs.append('marker').attr('id', id)
+      .attr('viewBox','0 -4 8 8').attr('refX',18).attr('refY',0)
+      .attr('markerWidth',6).attr('markerHeight',6).attr('orient','auto')
+      .append('path').attr('d','M0,-4L8,0L0,4').attr('fill',color).attr('opacity',0.7);
+  });
+
+  // Zoom layer
+  graphG = graphSvg.append('g');
+  const zoom = d3.zoom()
+    .filter(event => !event.shiftKey || event.button !== 0)
+    .scaleExtent([0.1,8])
+    .on('zoom', e => {
+      savedZoomTransform = e.transform;
+      graphG.attr('transform', e.transform);
+    });
+  graphSvg.call(zoom);
+  // Restore previous zoom/pan position
+  if (savedZoomTransform) {
+    graphSvg.call(zoom.transform, savedZoomTransform);
+  }
+
+  // Box selection (Shift+drag)
+  let brushRect = null, brushStart = null;
+  graphSvg.on('mousedown', function(event) {
+    if (!event.shiftKey || event.button !== 0) return;
+    event.preventDefault();
+    brushStart = d3.pointer(event, graphSvg.node());
+    brushRect = graphSvg.append('rect').attr('class','brush-rect')
+      .attr('x',brushStart[0]).attr('y',brushStart[1]).attr('width',0).attr('height',0);
+  }).on('mousemove', function(event) {
+    if (!brushRect) return;
+    const cur = d3.pointer(event, graphSvg.node());
+    const x = Math.min(brushStart[0],cur[0]), y = Math.min(brushStart[1],cur[1]);
+    const w = Math.abs(cur[0]-brushStart[0]), h = Math.abs(cur[1]-brushStart[1]);
+    brushRect.attr('x',x).attr('y',y).attr('width',w).attr('height',h);
+  }).on('mouseup', function(event) {
+    if (!brushRect) return;
+    const cur = d3.pointer(event, graphSvg.node());
+    const x0=Math.min(brushStart[0],cur[0]), y0=Math.min(brushStart[1],cur[1]);
+    const x1=Math.max(brushStart[0],cur[0]), y1=Math.max(brushStart[1],cur[1]);
+    brushRect.remove(); brushRect=null;
+    // Get current transform
+    const t = d3.zoomTransform(graphSvg.node());
+    state.highlightedNodes.clear();
+    nodeCircles.each(function(d) {
+      const sx = t.applyX(d.x), sy = t.applyY(d.y);
+      if (sx>=x0&&sx<=x1&&sy>=y0&&sy<=y1) state.highlightedNodes.add(d.id);
+    });
+    applyHighlight();
+  });
+
+  // Links
+  const linkG = graphG.append('g').attr('class','links');
+  const linkLines = linkG.selectAll('line').data(links).join('line')
+    .attr('stroke', d => EDGE_COLORS[d.type]||EDGE_COLORS.unknown)
+    .attr('stroke-width', 1.2)
+    .attr('stroke-opacity', 0.5)
+    .attr('marker-end', d => {
+      const c = EDGE_COLORS[d.type]||EDGE_COLORS.unknown;
+      return `url(#arrow-${c.replace('#','')})`;
+    })
+    .on('mouseover', (event,d) => {
+      showTooltip(event, `<strong>${d.type}</strong>${d.source?.id||d.source} → ${d.target?.id||d.target}`);
+    })
+    .on('mouseout', hideTooltip);
+
+  // Nodes
+  const nodeG = graphG.append('g').attr('class','nodes');
+  const nodeCircles = nodeG.selectAll('circle').data(nodes, d=>d.id).join('circle')
+    .attr('r', d => ROLE_SIZE[d.role] || 7)
+    .attr('fill', d => {
+      if (d.role === 'sailor') return '#ffdd00';
+      return NODE_COLORS[d.type] || NODE_COLORS.unknown;
+    })
+    .attr('stroke', d => (ROLE_STROKE[d.role] || ROLE_STROKE.other).color)
+    .attr('stroke-width', d => (ROLE_STROKE[d.role] || ROLE_STROKE.other).width)
+    .attr('cursor','pointer')
+    .call(d3.drag()
+      .on('start', (event,d) => { if(!event.active) simulation.alphaTarget(0.3).restart(); d.fx=d.x; d.fy=d.y; })
+      .on('drag', (event,d) => { d.fx=event.x; d.fy=event.y; })
+      .on('end', (event,d) => { if(!event.active) simulation.alphaTarget(0); d.fx=null; d.fy=null; })
+    )
+    .on('mouseover', (event,d) => {
+      showTooltip(event, `<strong>${d.label||d.name||d.id}</strong>
+        <div>Type: ${d.type}</div>
+        ${d.genre?`<div>Genre: ${d.genre}</div>`:''}
+        ${d.release_date?`<div>Year: ${d.release_date}</div>`:''}
+        ${d.notable!==undefined?`<div>Notable: ${d.notable?'✓':'✗'}</div>`:''}
+        ${d.role?`<div>Role: ${d.role}</div>`:''}
+      `);
+    })
+    .on('mouseout', hideTooltip)
+    .on('click', (event,d) => {
+      event.stopPropagation();
+      if (event.shiftKey) return;
+      if (state.selectedNode && state.selectedNode.id === d.id) {
+        state.selectedNode = null;
+        state.highlightedNodes.clear();
+        applyHighlight();
+        document.getElementById('graph-info').style.display='none';
+        clearLinkage();
+        return;
+      }
+      selectNode(d, nodes, links, nodeCircles, linkLines);
+    })
+    .on('dblclick', (event,d) => {
+      event.stopPropagation();
+      showNodeDetail(d);
+    });
+
+  // Labels for important nodes
+  const labelG = graphG.append('g').attr('class','labels');
+  const labels = labelG.selectAll('text').data(nodes.filter(n=>
+    n.role==='sailor'||n.role==='sailor_work'||n.role==='ivy_echoes'||n.role==='collaborator'
+  )).join('text')
+    .text(d => (d.label||d.name||'').substring(0,20))
+    .attr('font-size', d => d.role==='sailor'?11:8)
+    .attr('fill', d => d.role==='sailor'?'#ffdd00':'#c0c0d0')
+    .attr('text-anchor','middle')
+    .attr('dy', d => -(ROLE_SIZE[d.role]||7)-3)
+    .attr('pointer-events','none');
+
+  // Click background to deselect
+  graphSvg.on('click.deselect', () => {
+    state.selectedNode = null;
+    state.highlightedNodes.clear();
+    applyHighlight();
+    document.getElementById('graph-info').style.display='none';
+    clearLinkage();
+  });
+
+  // Simulation
+  if (simulation) simulation.stop();
+  simulation = d3.forceSimulation(nodes)
+    .force('link', d3.forceLink(links).id(d=>d.id).distance(60).strength(0.5))
+    .force('charge', d3.forceManyBody().strength(-120))
+    .force('center', d3.forceCenter(W/2, H/2))
+    .force('collision', d3.forceCollide().radius(d=>(ROLE_SIZE[d.role]||7)+3))
+    .on('tick', () => {
+      linkLines
+        .attr('x1', d=>d.source.x).attr('y1', d=>d.source.y)
+        .attr('x2', d=>d.target.x).attr('y2', d=>d.target.y);
+      nodeCircles.attr('cx', d=>d.x).attr('cy', d=>d.y);
+      labels.attr('x', d=>d.x).attr('y', d=>d.y);
+    });
+
+  function applyHighlight() {
+    const hasHL = state.highlightedNodes.size > 0 || state.selectedNode;
+    nodeCircles.attr('opacity', d => {
+      if (!hasHL) return 1;
+      return state.highlightedNodes.has(d.id) || d.id===state.selectedNode?.id ? 1 : 0.15;
+    });
+    linkLines.attr('opacity', d => {
+      if (!hasHL) return 0.5;
+      const s = d.source?.id||d.source, t = d.target?.id||d.target;
+      return (state.highlightedNodes.has(s)||state.highlightedNodes.has(t)||
+              s===state.selectedNode?.id||t===state.selectedNode?.id) ? 0.9 : 0.05;
+    });
+  }
+
+  function selectNode(d, nodes, links, nodeCircles, linkLines) {
+    state.selectedNode = d;
+    // Find connected nodes
+    state.highlightedNodes.clear();
+    state.highlightedNodes.add(d.id);
+    links.forEach(l => {
+      const s = l.source?.id||l.source, t = l.target?.id||l.target;
+      if (s===d.id) state.highlightedNodes.add(t);
+      if (t===d.id) state.highlightedNodes.add(s);
+    });
+    applyHighlight();
+    showNodeDetail(d);
+    renderLinkage(d);
+  }
+
+  // Store refs for external use
+  graphSvg._nodeCircles = nodeCircles;
+  graphSvg._linkLines = linkLines;
+  graphSvg._applyHighlight = applyHighlight;
+}
+
+function showNodeDetail(d) {
+  const info = document.getElementById('graph-info');
+  document.getElementById('info-name').textContent = d.label||d.name||d.id;
+  const rows = [
+    ['Type', d.type],
+    d.role ? ['Role', d.role] : null,
+    d.genre ? ['Genre', d.genre] : null,
+    d.release_date ? ['Released', d.release_date] : null,
+    d.notoriety_date ? ['Notoriety', d.notoriety_date] : null,
+    d.notable !== undefined ? ['Notable', d.notable ? '⭐ Yes' : 'No'] : null,
+    d.stage_name ? ['Stage Name', d.stage_name] : null,
+  ].filter(Boolean);
+  document.getElementById('info-body').innerHTML = rows.map(([k,v])=>
+    `<div class="info-row"><span class="info-key">${k}:</span> ${v}</div>`
+  ).join('');
+  info.style.display = 'block';
+}
+
+// ─────────────────────────────────────────────────────────────
+// TIMELINE (3 stacked bar charts) — complete rewrite
+// ─────────────────────────────────────────────────────────────
+function renderTimeline() {
+  if (!state.timelineData) return;
+  const panel = document.getElementById('timeline-panel');
+  const W = panel.clientWidth - 16;
+
+  const decades = [1960,1970,1980,1990,2000,2010,2020,2030,2040];
+  const perDecade = state.timelineData.per_decade || [];
+
+  // Build lookup
+  const byDecade = {};
+  perDecade.forEach(d => { byDecade[d.decade] = d; });
+
+  // Filter by active decade range
+  const activeDecades = decades.filter(d => d >= state.decadeMin && d <= state.decadeMax);
+
+  // ── Fixed layout constants ──────────────────────────────────
+  // Each chart has: legend row (14px) + chart body (CHART_H) + x-axis (22px)
+  // Between charts: gap (10px)
+  const ML = 58;    // left margin (room for rotated y-label + tick numbers)
+  const MR = 14;    // right margin
+  const MT = 8;     // top margin (above first legend row)
+  const LEG_H = 20; // legend row height for charts 1 & 2
+  const LEG_H3 = 44; // legend row height for chart 3 (4 rows × 10px + 4px padding)
+  const CHART_H = 130;  // bar/line area height for charts 1 & 2
+  const CHART_H3 = 180; // taller area for chart 3 (more genres)
+  const XAXIS_H = 22;   // x-axis tick label height
+  const GAP = 10;   // gap between charts
+  const BLOCK  = LEG_H  + CHART_H  + XAXIS_H; // block height for charts 1 & 2
+  const BLOCK3 = LEG_H3 + CHART_H3 + XAXIS_H; // block height for chart 3
+  const TOTAL_H = MT + 2 * BLOCK + GAP + BLOCK3 + GAP; // total SVG height
+
+  const chartW = W - ML - MR;
+
+  const svg = d3.select('#timeline-svg').attr('width', W).attr('height', TOTAL_H);
+  svg.selectAll('*').remove();
+
+  const xScale = d3.scaleBand().domain(activeDecades.map(String)).range([0, chartW]).padding(0.2);
+  const xAxis = d3.axisBottom(xScale).tickFormat(d => `'${String(d).slice(2)}`).tickSize(4);
+
+  // Helper: draw one chart group at yTop (top of legend row)
+  function makeChartGroup(yTop) {
+    // chart body starts below legend row
+    return svg.append('g').attr('transform', `translate(${ML},${yTop + LEG_H})`);
+  }
+
+  // ── Chart 1: Total works ────────────────────────────────────
+  const y1Top = MT;
+  const g1 = makeChartGroup(y1Top);
+
+  // Legend row (above chart body)
+  const leg1 = svg.append('g').attr('transform', `translate(${ML},${y1Top})`);
+  const leg1Items = [['#404060','Other Genres'],['#4e79a7','Oceanus Folk'],['#e94560','Sailor Works']];
+  leg1Items.forEach(([c,l],i) => {
+    leg1.append('rect').attr('x', i*110).attr('y', 4).attr('width', 10).attr('height', 10).attr('fill', c);
+    leg1.append('text').attr('x', i*110+13).attr('y', 13).attr('fill','#a0a0c0').attr('font-size',11).text(l);
+  });
+
+  const maxTotal = d3.max(activeDecades, d => (byDecade[d]?.total||0)) || 1;
+  const y1 = d3.scaleLinear().domain([0, maxTotal]).range([CHART_H, 0]);
+
+  // Y-axis label (rotated)
+  g1.append('text')
+    .attr('transform', `translate(${-ML+10},${CHART_H/2}) rotate(-90)`)
+    .attr('fill','#a0a0c0').attr('font-size',9).attr('text-anchor','middle')
+    .text('# Works');
+  g1.append('g').attr('transform', `translate(0,${CHART_H})`).call(xAxis)
+    .selectAll('text').attr('fill','#808090').attr('font-size',11);
+  g1.append('g').call(d3.axisLeft(y1).ticks(4))
+    .selectAll('text').attr('fill','#808090').attr('font-size',11);
+  g1.selectAll('.domain,.tick line').attr('stroke','#303050');
+
+  activeDecades.forEach(dec => {
+    const d = byDecade[dec] || {};
+    const total = d.total||0, of = d.oceanus_folk||0, sailor = d.sailor_works||0;
+    const other = Math.max(0, total - of);
+    const ofNoSailor = Math.max(0, of - sailor);
+    const barX = xScale(String(dec)), bw = xScale.bandwidth();
+    const isSelected = state.selectedDecade === dec;
+
+    if (other > 0) g1.append('rect').attr('x',barX).attr('y',y1(other))
+      .attr('width',bw).attr('height',CHART_H-y1(other)).attr('fill','#404060').attr('opacity',0.8);
+    if (ofNoSailor > 0) g1.append('rect').attr('x',barX).attr('y',y1(other+ofNoSailor))
+      .attr('width',bw).attr('height',CHART_H-y1(ofNoSailor)).attr('fill','#4e79a7').attr('opacity',0.85);
+    if (sailor > 0) g1.append('rect').attr('x',barX).attr('y',y1(other+of))
+      .attr('width',bw).attr('height',CHART_H-y1(sailor)).attr('fill','#e94560').attr('opacity',1);
+
+    g1.append('rect').attr('x',barX).attr('y',0).attr('width',bw).attr('height',CHART_H)
+      .attr('fill','transparent')
+      .on('mouseover', (event) => {
+        const d2 = byDecade[dec]||{};
+        showTooltip(event, `<strong>${dec}s</strong>
+          <div>Total: ${d2.total||0}</div>
+          <div>Oceanus Folk: ${d2.oceanus_folk||0}</div>
+          <div>Sailor Works: ${d2.sailor_works||0}</div>
+          <div>Notable: ${d2.notable||0}</div>`);
+      })
+      .on('mouseout', hideTooltip);
+  });
+
+  // ── Chart 2: Notable ratio ──────────────────────────────────
+  const y2Top = MT + BLOCK + GAP;
+  const g2 = makeChartGroup(y2Top);
+
+  // Legend row
+  const leg2 = svg.append('g').attr('transform', `translate(${ML},${y2Top})`);
+  [['#f28e2b','All Works'],['#e94560','Sailor (approx)']].forEach(([c,l],i) => {
+    leg2.append('line').attr('x1',i*130).attr('y1',9).attr('x2',i*130+16).attr('y2',9).attr('stroke',c).attr('stroke-width',2.5);
+    leg2.append('text').attr('x',i*130+20).attr('y',13).attr('fill','#a0a0c0').attr('font-size',11).text(l);
+  });
+
+  const y2 = d3.scaleLinear().domain([0,1]).range([CHART_H,0]);
+  g2.append('text')
+    .attr('transform', `translate(${-ML+10},${CHART_H/2}) rotate(-90)`)
+    .attr('fill','#a0a0c0').attr('font-size',9).attr('text-anchor','middle')
+    .text('Notable%');
+  g2.append('g').attr('transform',`translate(0,${CHART_H})`).call(xAxis)
+    .selectAll('text').attr('fill','#808090').attr('font-size',11);
+  g2.append('g').call(d3.axisLeft(y2).ticks(4).tickFormat(d3.format('.0%')))
+    .selectAll('text').attr('fill','#808090').attr('font-size',11);
+  g2.selectAll('.domain,.tick line').attr('stroke','#303050');
+
+  const lineData = activeDecades.map(dec => ({dec, ratio: byDecade[dec]?.notable_ratio||0}));
+  const lineGen = d3.line().x(d=>xScale(String(d.dec))+xScale.bandwidth()/2).y(d=>y2(d.ratio)).curve(d3.curveMonotoneX);
+  g2.append('path').datum(lineData).attr('fill','none').attr('stroke','#f28e2b').attr('stroke-width',2).attr('d',lineGen);
+  g2.selectAll('circle.all').data(lineData).join('circle')
+    .attr('cx',d=>xScale(String(d.dec))+xScale.bandwidth()/2).attr('cy',d=>y2(d.ratio))
+    .attr('r',3).attr('fill','#f28e2b')
+    .on('mouseover',(event,d)=>showTooltip(event,`<strong>${d.dec}s</strong><div>Notable ratio: ${(d.ratio*100).toFixed(1)}%</div>`))
+    .on('mouseout',hideTooltip);
+
+  const sailorLine = activeDecades.map(dec => {
+    const d = byDecade[dec]||{};
+    return {dec, ratio: (d.sailor_works||0)>0 ? Math.min(1,(d.notable||0)/Math.max(d.total||1,1)) : 0};
+  });
+  const sailorLineGen = d3.line().x(d=>xScale(String(d.dec))+xScale.bandwidth()/2).y(d=>y2(d.ratio)).curve(d3.curveMonotoneX);
+  g2.append('path').datum(sailorLine).attr('fill','none').attr('stroke','#e94560')
+    .attr('stroke-width',1.5).attr('stroke-dasharray','4,2').attr('d',sailorLineGen);
+
+  // ── Chart 3: Oceanus Folk vs. Everything Else ───────────────
+  const LEG_H3_SIMPLE = 20; // only 2 legend items, single row
+  const y3Top = MT + (BLOCK + GAP) * 2;
+  const g3 = svg.append('g').attr('transform', `translate(${ML},${y3Top + LEG_H3_SIMPLE})`);
+
+  // Legend row — 2 items only
+  const leg3 = svg.append('g').attr('transform', `translate(${ML},${y3Top + 2})`);
+  [['#404060','Other Genres'],['#4e79a7','Oceanus Folk']].forEach(([c,l],i) => {
+    leg3.append('rect').attr('x',i*130).attr('y',4).attr('width',10).attr('height',10).attr('fill',c);
+    leg3.append('text').attr('x',i*130+13).attr('y',13).attr('fill','#a0a0c0').attr('font-size',9).text(l);
+  });
+
+  const maxGenreTotal = d3.max(activeDecades, dec => (byDecade[dec]?.total||0)) || 1;
+  const y3 = d3.scaleLinear().domain([0, maxGenreTotal]).range([CHART_H3, 0]);
+
+  g3.append('text')
+    .attr('transform', `translate(${-ML+10},${CHART_H3/2}) rotate(-90)`)
+    .attr('fill','#a0a0c0').attr('font-size',9).attr('text-anchor','middle')
+    .text('# Works');
+  g3.append('g').attr('transform',`translate(0,${CHART_H3})`).call(xAxis)
+    .selectAll('text').attr('fill','#808090').attr('font-size',11);
+  g3.append('g').call(d3.axisLeft(y3).ticks(4))
+    .selectAll('text').attr('fill','#808090').attr('font-size',11);
+  g3.selectAll('.domain,.tick line').attr('stroke','#303050');
+
+  activeDecades.forEach(dec => {
+    const d = byDecade[dec]||{};
+    const total = d.total||0;
+    const of = d.oceanus_folk||0;
+    const other = Math.max(0, total - of);
+    const barX = xScale(String(dec)), bw = xScale.bandwidth();
+
+    // Other genres (bottom)
+    if (other > 0) {
+      g3.append('rect').attr('x',barX).attr('y',y3(other))
+        .attr('width',bw).attr('height',CHART_H3-y3(other))
+        .attr('fill','#404060').attr('opacity',0.8)
+        .on('mouseover',(event)=>showTooltip(event,`<strong>${dec}s</strong><div>Other genres: ${other}</div><div>Total: ${total}</div>`))
+        .on('mouseout',hideTooltip);
+    }
+    // Oceanus Folk (top, stacked)
+    if (of > 0) {
+      g3.append('rect').attr('x',barX).attr('y',y3(total))
+        .attr('width',bw).attr('height',CHART_H3-y3(of))
+        .attr('fill','#4e79a7').attr('opacity',0.9)
+        .on('mouseover',(event)=>showTooltip(event,`<strong>${dec}s</strong><div>Oceanus Folk: ${of}</div><div>Share: ${total>0?(of/total*100).toFixed(1):0}%</div>`))
+        .on('mouseout',hideTooltip);
+    }
+
+    // OF % label on top of bar
+    if (total > 0 && of > 0) {
+      const pct = (of/total*100).toFixed(0);
+      g3.append('text').attr('x',barX+bw/2).attr('y',y3(total)-3)
+        .attr('text-anchor','middle').attr('fill','#4e79a7').attr('font-size',8)
+        .text(`${pct}%`);
+    }
+  });
+}
+
+// ─────────────────────────────────────────────────────────────
+// CONTEXT-SENSITIVE BOTTOM-RIGHT PANEL
+// ─────────────────────────────────────────────────────────────
+function clearLinkage() {
+  d3.select('#linkage-svg').selectAll('*').remove();
+  document.getElementById('linkage-hint').style.display = 'block';
+  document.getElementById('linkage-title').textContent = '🔗 Detailed View — click a node in the graph to explore';
+}
+
+// Build a side-item object
+function mkItem(id, node, edgeType, reverseArrow) {
+  return {
+    id,
+    name: node.label || node.name || String(id),
+    type: node.type || 'unknown',
+    genre: node.genre || null,
+    year: node.release_date || null,
+    notable: node.notable,
+    edgeType,
+    color: NODE_COLORS[node.type] || '#bab0ac',
+    reverseArrow: !!reverseArrow
+  };
+}
+
+function renderLinkage(selectedNode) {
+  document.getElementById('linkage-hint').style.display = 'none';
+  const panel = document.getElementById('linkage-panel');
+  const W = panel.clientWidth - 16;
+  const H = Math.max(panel.clientHeight - 28, 280);
+  const svg = d3.select('#linkage-svg').attr('width', W).attr('height', H);
+  svg.selectAll('*').remove();
+
+  const role = selectedNode.role || 'other';
+  const rawData = state.egoData;
+  const nodeMap = {};
+  if (rawData) rawData.nodes.forEach(n => { nodeMap[n.id] = n; });
+
+  const CREATOR_TYPES = ['PerformerOf', 'ComposerOf', 'LyricistOf', 'ProducerOf'];
+  const INFL_TYPES    = ['InStyleOf', 'InterpolatesFrom', 'CoverOf', 'LyricalReferenceTo', 'DirectlySamples'];
+  const LABEL_TYPES   = ['RecordedBy', 'DistributedBy'];
+
+  let leftItems = [], rightItems = [];
+  let centerLabel = selectedNode.label || selectedNode.name || String(selectedNode.id);
+  let titleText   = '🔗 Node Connections';
+
+  // ── Helper: deduplicate by id (keep first occurrence) ────────
+  function dedup(arr) {
+    const seen = new Set();
+    return arr.filter(x => { if (seen.has(x.id)) return false; seen.add(x.id); return true; });
+  }
+
+  // ── Role: Sailor Shift ───────────────────────────────────────
+  if (role === 'sailor') {
+    titleText = '🌊 Q1 & Q3: Sailor Shift — Influences (left) & Collaborators/New-Gen (right)';
+    centerLabel = 'Sailor Shift';
+    if (rawData) {
+      // Left: influence sources reached via sailor_work → INFL_TYPE → influence_source
+      const seenL = new Set();
+      rawData.links.forEach(l => {
+        const s = l.source?.id ?? l.source, t = l.target?.id ?? l.target;
+        const sNode = nodeMap[s], tNode = nodeMap[t];
+        if (sNode?.role === 'sailor_work' && tNode?.role === 'influence_source' && !seenL.has(t)) {
+          seenL.add(t);
+          leftItems.push(mkItem(t, tNode, l.type, false));
+        }
+      });
+      // Right: collaborators + new-gen artists
+      rawData.nodes.forEach(n => {
+        if (n.role === 'collaborator') {
+          rightItems.push(mkItem(n.id, n, 'Collaborator', false));
+        } else if (n.role === 'new_gen_artist') {
+          rightItems.push({ ...mkItem(n.id, n, 'Inspired', false), color: '#e9c46a' });
+        }
+      });
+    }
+
+  // ── Role: Sailor's Work ──────────────────────────────────────
+  } else if (role === 'sailor_work') {
+    titleText = "🎵 Sailor's Work — Creators & Influences (left) · Labels (right)";
+    if (rawData) {
+      rawData.links.forEach(l => {
+        const s = l.source?.id ?? l.source, t = l.target?.id ?? l.target;
+        // Incoming creator edges → left (normal: creator → work)
+        if (t === selectedNode.id && CREATOR_TYPES.includes(l.type)) {
+          const sNode = nodeMap[s];
+          if (sNode) leftItems.push(mkItem(s, sNode, l.type, false));
+        }
+        if (s === selectedNode.id) {
+          const tNode = nodeMap[t];
+          if (!tNode) return;
+          // Outgoing influence edges → left (normal: work → source, arrow points left)
+          if (INFL_TYPES.includes(l.type)) {
+            leftItems.push({ ...mkItem(t, tNode, l.type, false), color: '#b07aa1' });
+          }
+          // Outgoing label edges → right (normal: work → label)
+          if (LABEL_TYPES.includes(l.type)) {
+            rightItems.push(mkItem(t, tNode, l.type, false));
+          }
+        }
+      });
+    }
+
+  // ── Role: Collaborator ───────────────────────────────────────
+  } else if (role === 'collaborator') {
+    titleText = '🤝 Q2: Collaborator — shared works with Sailor (right) & other connections (left)';
+    if (rawData) {
+      rawData.links.forEach(l => {
+        const s = l.source?.id ?? l.source, t = l.target?.id ?? l.target;
+        if (s !== selectedNode.id && t !== selectedNode.id) return;
+        const otherId = s === selectedNode.id ? t : s;
+        const otherNode = nodeMap[otherId];
+        if (!otherNode) return;
+        if (otherNode.role === 'sailor_work') {
+          rightItems.push(mkItem(otherId, otherNode, l.type, false));
+        } else if (otherId !== state.egoData?.sailor_id) {
+          leftItems.push(mkItem(otherId, otherNode, l.type, false));
+        }
+      });
+    }
+
+  // ── Role: Influence Source ───────────────────────────────────
+  } else if (role === 'influence_source') {
+    titleText = "🎵 Q1: Influence Source — upstream (left) · Sailor's works referencing it (right)";
+    if (rawData) {
+      rawData.links.forEach(l => {
+        const s = l.source?.id ?? l.source, t = l.target?.id ?? l.target;
+        // Incoming creator edges → left (normal: creator → source)
+        if (t === selectedNode.id && CREATOR_TYPES.includes(l.type)) {
+          const sNode = nodeMap[s];
+          if (sNode) leftItems.push(mkItem(s, sNode, l.type, false));
+        }
+        // Outgoing influence edges FROM this source → left (reversed: center→left)
+        // e.g. source → InStyleOf → upstream: arrow points FROM center (source) → TO left (upstream)
+        if (s === selectedNode.id && INFL_TYPES.includes(l.type)) {
+          const tNode = nodeMap[t];
+          if (tNode) leftItems.push(mkItem(t, tNode, l.type, true)); // reverseArrow=true
+        }
+        // Incoming influence edges from sailor_work → right (reversed: sailor_work → source)
+        // Arrow: right (sailor_work) → center (source)
+        if (t === selectedNode.id && INFL_TYPES.includes(l.type)) {
+          const sNode = nodeMap[s];
+          if (sNode?.role === 'sailor_work') {
+            rightItems.push(mkItem(s, sNode, l.type, true)); // reverseArrow=true
+          }
+        }
+      });
+    }
+
+  // ── Role: New-Gen Artist ─────────────────────────────────────
+  } else if (role === 'new_gen_artist') {
+    titleText = '⭐ Q3: New-Gen OF Artist — incoming (left) & outgoing (right)';
+    if (rawData) {
+      rawData.links.forEach(l => {
+        const s = l.source?.id ?? l.source, t = l.target?.id ?? l.target;
+        if (s === selectedNode.id) {
+          const tNode = nodeMap[t];
+          if (tNode) rightItems.push(mkItem(t, tNode, l.type, false));
+        }
+        if (t === selectedNode.id) {
+          const sNode = nodeMap[s];
+          if (sNode) leftItems.push(mkItem(s, sNode, l.type, false));
+        }
+      });
+    }
+    if (!leftItems.length && !rightItems.length) {
+      leftItems.push({ id: 'ctx', name: `Debut: ${selectedNode.first_of_work_year || selectedNode.release_date || '?'}`,
+        type: 'info', genre: 'Oceanus Folk', year: null, edgeType: 'Debut', color: '#e9c46a', reverseArrow: false });
+      rightItems.push({ id: 'ctx2', name: `OF Works: ${selectedNode.of_works_count || '?'}`,
+        type: 'info', genre: 'Oceanus Folk', year: null, edgeType: 'Output', color: '#4e79a7', reverseArrow: false });
+    }
+
+  // ── Generic (Person, MusicalGroup, RecordLabel, etc.) ────────
+  } else {
+    titleText = '🔗 Node Connections — upstream (left) & downstream (right)';
+    if (rawData) {
+      rawData.links.forEach(l => {
+        const s = l.source?.id ?? l.source, t = l.target?.id ?? l.target;
+
+        // Incoming edges
+        if (t === selectedNode.id) {
+          const sNode = nodeMap[s];
+          if (!sNode) return;
+          const INFL = ['InStyleOf','InterpolatesFrom','CoverOf','LyricalReferenceTo','DirectlySamples'];
+          if (INFL.includes(l.type)) {
+            // e.g. Ivy Echos → InStyleOf → Violet Engines (center)
+            // Means: center was influenced by source → show source on RIGHT with reversed arrow
+            // Arrow: right (source) → center (selected), reading "center is InStyleOf source"
+            rightItems.push(mkItem(s, sNode, l.type, true)); // reverseArrow=true
+          } else if (l.type === 'MemberOf') {
+            // Data stores MemberOf as Person (source) → MemberOf → Group (target)
+            // Incoming MemberOf: center is the Group (target), source is a Person member
+            // Show Person on LEFT with normal arrow: left-node → center (Person → Group)
+            // Reading: "Person is a MemberOf Group"
+            leftItems.push(mkItem(s, sNode, l.type, false)); // reverseArrow=false
+          } else {
+            // Normal upstream: source → center
+            leftItems.push(mkItem(s, sNode, l.type, false));
+          }
+        }
+
+        // Outgoing edges → right, normal arrow (center → right)
+        // MemberOf outgoing: center (Group) → MemberOf → Person (member)
+        if (s === selectedNode.id) {
+          const tNode = nodeMap[t];
+          if (!tNode) return;
+          rightItems.push(mkItem(t, tNode, l.type, false));
+        }
+      });
+    }
+  }
+
+  // Deduplicate within each array
+  leftItems  = dedup(leftItems);
+  rightItems = dedup(rightItems);
+
+  // Cross-dedup: if a node appears in both arrays, keep it only in rightItems
+  // (rightItems has priority because MemberOf/InStyleOf semantics are more specific)
+  const rightIds = new Set(rightItems.map(x => x.id));
+  leftItems = leftItems.filter(x => !rightIds.has(x.id));
+
+  // Cap
+  leftItems  = leftItems.slice(0, 12);
+  rightItems = rightItems.slice(0, 12);
+
+  document.getElementById('linkage-title').textContent = titleText;
+  drawThreeColumnSankey(svg, W, H, selectedNode, centerLabel, leftItems, rightItems);
+}
+
+// ── 3-column Sankey renderer ──────────────────────────────────
+function drawThreeColumnSankey(svg, W, H, centerNode, centerLabel, leftItems, rightItems) {
+  const ML = 10, MR = 10, MT = 10;
+  const colW  = (W - ML - MR) / 3;
+  const colXL = ML + colW * 0.5;   // center-x of left column
+  const colXC = ML + colW * 1.5;   // center-x of center column
+  const colXR = ML + colW * 2.5;   // center-x of right column
+
+  // ── Arrowhead markers ────────────────────────────────────────
+  // sk3-arrow:     normal — arrowhead offset 14px back (lands just outside target box)
+  // sk3-arrow-rev: reversed — arrowhead at exact endpoint (refX=0)
+  const defs = svg.append('defs');
+  defs.append('marker').attr('id', 'sk3-arrow')
+    .attr('viewBox', '0 -4 8 8').attr('refX', 14).attr('refY', 0)
+    .attr('markerWidth', 5).attr('markerHeight', 5).attr('orient', 'auto')
+    .append('path').attr('d', 'M0,-4L8,0L0,4').attr('fill', '#a0a0c0').attr('opacity', 0.8);
+  defs.append('marker').attr('id', 'sk3-arrow-rev')
+    .attr('viewBox', '0 -4 8 8').attr('refX', 0).attr('refY', 0)
+    .attr('markerWidth', 5).attr('markerHeight', 5).attr('orient', 'auto')
+    .append('path').attr('d', 'M0,-4L8,0L0,4').attr('fill', '#a0a0c0').attr('opacity', 0.8);
+
+  // ── Column headers ───────────────────────────────────────────
+  const hasRevRight = rightItems.some(x => x.reverseArrow);
+  const rightHeader = hasRevRight ? 'Referenced By' : 'Downstream / Influenced';
+  ['Upstream / Influences', 'Selected Node', rightHeader].forEach((label, i) => {
+    svg.append('text')
+      .attr('x', [colXL, colXC, colXR][i]).attr('y', MT + 12)
+      .attr('text-anchor', 'middle').attr('fill', '#808090')
+      .attr('font-size', 11).attr('font-style', 'italic')
+      .text(label);
+  });
+
+  // ── Center node box ──────────────────────────────────────────
+  const centerY = H / 2;
+  const cw = Math.min(colW - 4, 180);
+  // Dynamically size box height based on number of content lines present
+  const lineCount = 2 + (centerNode.notable ? 1 : 0) + (centerNode.genre ? 1 : 0);
+  const LINE_H = 16;  // px per line
+  const ch = 20 + lineCount * LINE_H;  // 10px top + 10px bottom padding
+  const centerColor = centerNode.role === 'sailor' ? '#ffdd00' : (NODE_COLORS[centerNode.type] || '#bab0ac');
+
+  // Build full tooltip HTML for center node (no truncation)
+  const centerTooltipHtml = [
+    `<strong>${centerNode.label || centerNode.name || centerNode.id}</strong>`,
+    `<div>Type: ${centerNode.type}</div>`,
+    centerNode.role        ? `<div>Role: ${centerNode.role}</div>`                    : '',
+    centerNode.genre       ? `<div>Genre: ${centerNode.genre}</div>`                  : '',
+    centerNode.release_date    ? `<div>Released: ${centerNode.release_date}</div>`    : '',
+    centerNode.notoriety_date  ? `<div>Notoriety: ${centerNode.notoriety_date}</div>` : '',
+    centerNode.notable !== undefined && centerNode.notable !== null
+                           ? `<div>Notable: ${centerNode.notable ? '⭐ Yes' : 'No'}</div>` : '',
+    centerNode.stage_name  ? `<div>Stage name: ${centerNode.stage_name}</div>`        : '',
+  ].join('');
+
+  svg.append('rect')
+    .attr('x', colXC - cw / 2).attr('y', centerY - ch / 2)
+    .attr('width', cw).attr('height', ch).attr('rx', 6)
+    .attr('fill', centerColor).attr('fill-opacity', 0.25)
+    .attr('stroke', centerColor).attr('stroke-width', 2)
+    .attr('cursor', 'default')
+    .on('mouseover', ev => showTooltip(ev, centerTooltipHtml))
+    .on('mouseout', hideTooltip);
+
+  // Text lines: evenly spaced from top of box, 16px apart
+  // pointer-events: none so the rect underneath captures hover
+  const textY0 = centerY - ch / 2 + 16;  // first line baseline (name)
+  svg.append('text').attr('x', colXC).attr('y', textY0)
+    .attr('text-anchor', 'middle').attr('fill', '#e0e0e0')
+    .attr('font-size', 11).attr('font-weight', 'bold')
+    .attr('pointer-events', 'none')
+    .text(String(centerLabel).substring(0, 26));
+  svg.append('text').attr('x', colXC).attr('y', textY0 + LINE_H)
+    .attr('text-anchor', 'middle').attr('fill', '#a0a0c0').attr('font-size', 10)
+    .attr('pointer-events', 'none')
+    .text(centerNode.type + (centerNode.release_date ? ` (${centerNode.release_date})` : ''));
+  let nextLineY = textY0 + LINE_H * 2;
+  if (centerNode.notable) {
+    svg.append('text').attr('x', colXC).attr('y', nextLineY)
+      .attr('text-anchor', 'middle').attr('fill', '#e9c46a').attr('font-size', 10)
+      .attr('pointer-events', 'none')
+      .text('⭐ Notable');
+    nextLineY += LINE_H;
+  }
+  if (centerNode.genre) {
+    svg.append('text').attr('x', colXC).attr('y', nextLineY)
+      .attr('text-anchor', 'middle').attr('fill', '#808090').attr('font-size', 9)
+      .attr('pointer-events', 'none')
+      .text(String(centerNode.genre).substring(0, 20));
+  }
+
+  // ── Draw one side column ─────────────────────────────────────
+  // Arrow direction per item:
+  //
+  //   isLeft=true,  reverseArrow=false → left-node  → center   (normal upstream)
+  //   isLeft=true,  reverseArrow=true  → center     → left-node (e.g. Person→MemberOf→Group)
+  //   isLeft=false, reverseArrow=false → center     → right-node (normal downstream)
+  //   isLeft=false, reverseArrow=true  → right-node → center   (e.g. Sailor's work → source)
+  function drawSide(items, colX, isLeft) {
+    if (!items.length) return;
+    const usableH = H - MT - 30;
+    const rowH    = Math.min(32, usableH / items.length);
+    const startY  = MT + 24 + (usableH - items.length * rowH) / 2;
+    const nw = Math.min(colW - 20, 120);
+    const nh = Math.min(rowH - 4, 26);
+
+    items.forEach((item, i) => {
+      const ny  = startY + i * rowH + rowH / 2;
+      const nx  = colX;
+      const rev = !!item.reverseArrow;
+
+      // Node box
+      svg.append('rect')
+        .attr('x', nx - nw / 2).attr('y', ny - nh / 2)
+        .attr('width', nw).attr('height', nh).attr('rx', 4)
+        .attr('fill', item.color).attr('fill-opacity', 0.75)
+        .attr('stroke', item.color).attr('stroke-width', 0.8)
+        .on('mouseover', ev => showTooltip(ev,
+          `<strong>${item.name}</strong>
+           <div>Type: ${item.type}</div>
+           ${item.genre  ? `<div>Genre: ${item.genre}</div>`  : ''}
+           ${item.year   ? `<div>Year: ${item.year}</div>`    : ''}
+           ${item.notable !== undefined ? `<div>Notable: ${item.notable ? '⭐ Yes' : 'No'}</div>` : ''}
+           <div>Edge: ${item.edgeType}</div>`))
+        .on('mouseout', hideTooltip);
+
+      // Node label
+      svg.append('text')
+        .attr('x', nx).attr('y', ny + 4)
+        .attr('text-anchor', 'middle').attr('fill', '#1a1a2e')
+        .attr('font-size', 9).attr('font-weight', 'bold')
+        .text(String(item.name).substring(0, 16));
+
+      // Line endpoints
+      let x1, y1, x2, y2;
+      if (isLeft && !rev) {
+        // Normal left: left-node → center
+        x1 = nx + nw / 2 + 2;  y1 = ny;
+        x2 = colXC - cw / 2 - 2; y2 = centerY;
+      } else if (isLeft && rev) {
+        // Reversed left: center → left-node
+        x1 = colXC - cw / 2 - 2; y1 = centerY;
+        x2 = nx + nw / 2 + 2;  y2 = ny;
+      } else if (!isLeft && rev) {
+        // Reversed right: right-node → center
+        x1 = nx - nw / 2 - 2;  y1 = ny;
+        x2 = colXC + cw / 2 + 2; y2 = centerY;
+      } else {
+        // Normal right: center → right-node
+        x1 = colXC + cw / 2 + 2; y1 = centerY;
+        x2 = nx - nw / 2 - 2;  y2 = ny;
+      }
+
+      const edgeColor = EDGE_COLORS[item.edgeType] || '#606080';
+      svg.append('line')
+        .attr('x1', x1).attr('y1', y1).attr('x2', x2).attr('y2', y2)
+        .attr('stroke', edgeColor).attr('stroke-width', 1.5).attr('stroke-opacity', 0.65)
+        .attr('marker-end', rev ? 'url(#sk3-arrow-rev)' : 'url(#sk3-arrow)');
+
+      // Edge label at midpoint
+      svg.append('text')
+        .attr('x', (x1 + x2) / 2).attr('y', (y1 + y2) / 2 - 3)
+        .attr('text-anchor', 'middle').attr('fill', edgeColor)
+        .attr('font-size', 9).attr('opacity', 0.85)
+        .text(item.edgeType);
+    });
+  }
+
+  drawSide(leftItems,  colXL, true);
+  drawSide(rightItems, colXR, false);
+
+  if (!leftItems.length) {
+    svg.append('text').attr('x', colXL).attr('y', H / 2)
+      .attr('text-anchor', 'middle').attr('fill', '#404060').attr('font-size', 9)
+      .text('No upstream data');
+  }
+  if (!rightItems.length) {
+    svg.append('text').attr('x', colXR).attr('y', H / 2)
+      .attr('text-anchor', 'middle').attr('fill', '#404060').attr('font-size', 9)
+      .text('No downstream data');
+  }
+}
+
+// ─────────────────────────────────────────────────────────────
+// RESIZE HANDLER
+// ─────────────────────────────────────────────────────────────
+let resizeTimer;
+window.addEventListener('resize', () => {
+  clearTimeout(resizeTimer);
+  resizeTimer = setTimeout(() => {
+    renderGraph();
+    renderTimeline();
+  }, 200);
+});
+</script>
+</body>
+</html>

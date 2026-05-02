@@ -1,0 +1,5 @@
+# Python 3.10 — pinned dependencies for run_preprocess.py / main_preprocess.ipynb
+networkx==3.3
+pandas==2.2.2
+numpy==1.26.4
+matplotlib==3.9.0

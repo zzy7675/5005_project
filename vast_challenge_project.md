@@ -97,63 +97,52 @@ For all of the edges in this graph, the only property is Edge Type. These types 
 | Components | Tech Stack |
 | :---- | :---- |
 | Data preprocessing and analysis | Python \+ NetworkX \+ Pandas \+ notebook |
-| Visualization | D3.js |
-| Backend | Streamlit |
+| Visualization | D3.js (static HTML, no backend) |
 
-## 
-
-## ---
+---
 
 ## Visualization
 
 ### Description And Function
 
-#### Left Main View Network Overview Force-Directed Graph
+#### Left Main View — Network Overview Force-Directed Graph
 
 Node Types: Person, Song, RecordLabel, Album, MusicalGroup.
 
 Edge Types: MemberOf, PerformerOf, ComposerOf, ProducerOf, LyricistOf, InStyleOf, InterpolatesFrom, CoverOf, LyricalReferenceTo, DirectlySamples, RecordedBy, DistributedBy.
 
-Sample nodes: {Song: "Unshackled Heart", Person: "Carlos Duffy", RecordLabel: "Nautical Mile Records", MusicalGroup: "The Codas", Album: "Crest of the Wave", Song: "Ocean's Whisper", Person: "Min Qin", Song: "Siren's Call", Song: "Rhythmic Tides", RecordLabel: "Sound Wave Productions"}
+Visual Design: node fill colour encodes node type; ring stroke colour encodes role (Sailor Shift = white, Her Works = magenta, Collaborators = cyan, Influence Sources = neon green, New-Gen Artists = deep pink). Each edge type is assigned a distinct colour with a directed arrowhead.
 
-Sample edges: following csv format data.
-
-\[  
-Header: {Edge Type,Source Node,Target Node,Relationship Description},  
-Data:  
-{MemberOf,Carlos Duffy (Person),The Codas (MusicalGroup),Person belongs to a group.},  
-{PerformerOf,The Codas (MusicalGroup),Unshackled Heart (Song),Group performed the song.},  
-{ComposerOf,Min Qin (Person),Rhythmic Tides (Song),Person wrote the music.},  
-{LyricistOf,Xiuying Xie (Person),Siren's Call (Song),Person wrote the lyrics.},  
-{ProducerOf,Carlos Duffy (Person),Unshackled Heart (Song),Person produced the track.},  
-{InStyleOf,Unshackled Heart (Song),Oceanus Folk (Genre/Style),Song follows a specific style.},  
-{InterpolatesFrom,Unshackled Heart (Song),Breaking These Chains (Song),Song uses a melodic/rhythmic element from another.},  
-{CoverOf,Siren's Call (Song),Ocean's Whisper (Song),A new version of an existing song.},  
-{LyricalReferenceTo,Rhythmic Tides (Song),Siren's Call (Song),Lyrics mention or point to another song.},  
-{DirectlySamples,Unshackled Heart (Song),Rhythmic Tides (Song),Uses an actual audio snippet from the source.},  
-{RecordedBy,Unshackled Heart (Song),Nautical Mile Records (Label),Track was recorded under this label.},  
-{DistributedBy,Crest of the Wave (Album),Sound Wave Productions (Label),The album is distributed by the record label.}  
-\]
-
-Visual Design: each type of node assigns a color, and each type of edge, with an arrow indicating directionality, assigns a color.
-
-Interactions: zoom and pan, click node to highlight all related connections, box selection for subgraphs, double-click to drill down to detail view.
+Interactions: zoom and pan, click node to highlight all direct connections and populate the Detailed Linkage View, click selected node again to deselect, Shift+drag for box selection of a subgraph, double-click to open a detail panel showing name, type, genre, year, and notable status.
 
 #### Top Global Control Panel
 
-Core widgets: time range slider, node type filters, edge type filters, songs genre dropdown, popular work label toggle.
+Core widgets: decade range slider (1960s–2040s), node type toggles (Person / Song / Album / MusicalGroup / RecordLabel), role toggles (Sailor / Her Works / Collaborators / Infl. Sources / New-Gen Artists), notable-only toggle.
 
 Function: unified control of global filtering conditions with real-time linked updates across all views.
 
-#### Top-Right View Temporal Evolution View
+#### Top-Right View — Temporal Evolution View
 
-Visual design: timeline with 3 stacked bar charts, and each bar chart has 10 bars 1960s, 1970s, 1980s, 1990s, 2000s, 2010s, 2020s, showing the change in number of songs, proportion of popular songs, and genre distribution.
+Visual design: three vertically stacked charts sharing the same decade x-axis (1960s–2040s):
 
-Interactions: sliding time range selection, linked update of the corresponding era subgraph in the network overview
+1. **Works count** — stacked bar chart showing Other Genres / Oceanus Folk / Sailor's Works per decade.
+2. **Notable ratio** — line chart showing the proportion of chart-topping works across all works and Sailor's works per decade.
+3. **Genre distribution** — stacked bar chart showing Other Genres vs. Oceanus Folk per decade, with the Oceanus Folk share percentage labelled on each bar.
 
-#### Bottom-Right View Detailed Linkage View
+Interactions: decade range slider filters all three charts simultaneously and updates the network graph to show only nodes from the selected era.
 
-Visual design: directed link diagram or Sankey diagram showing full upstream and downstream connections of selected nodes. For instance, show a Song node's upstream node and downstream node connecting with edges. Possible upstream nodes are {Person, Album, MusicalGroup}, possible downstream nodes are {RecordLabel}.
+#### Bottom-Right View — Detailed Linkage View
 
-Interactions: expand/collapse links, node detail pop-ups, association type filtering.
+Visual design: 3-column directed Sankey diagram. The center column shows the selected node; the left column shows upstream connections; the right column shows downstream connections. Content adapts to the selected node's role:
+
+| Selected Role | Left column | Right column |
+|---|---|---|
+| Sailor Shift | Influence sources (works Sailor drew from) | Collaborators & new-gen artists |
+| Sailor's Work | Creators (PerformerOf / ComposerOf / LyricistOf) & influence sources | Record labels (RecordedBy / DistributedBy) |
+| Collaborator | Other connections | Shared works with Sailor |
+| Influence Source | Upstream works this source drew from | Sailor's works that reference this source |
+| New-Gen Artist | Incoming connections | Outgoing connections |
+| Generic node | Normal upstream edges | Downstream edges |
+
+Arrow direction reflects the true edge direction in the knowledge graph. MemberOf edges (stored as Group → Person) and InStyleOf edges are placed in the right column with a reversed arrow so the visual direction matches the semantic meaning. Hover any node box for a tooltip with full metadata.
 

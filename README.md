@@ -147,35 +147,40 @@ The dashboard has four interactive panels:
 |---|---|
 | **Decade range slider** | Filter all views to a time window |
 | **Node type toggles** | Show/hide Person, Song, Album, RecordLabel, MusicalGroup |
-| **Edge type toggles** | Show/hide any of the 12 edge types |
-| **Genre dropdown** | Filter to a specific music genre |
+| **Role toggles** | Show/hide nodes by role: Sailor, Her Works, Collaborators, Infl. Sources, New-Gen Artists |
 | **Notable only** | Show only chart-topping works |
-| **Ego Net / Influence Net** | Switch the main graph between Sailor's ego network and the 2-hop influence network |
 
 ### Left — Force-Directed Network Graph
 | Interaction | Action |
 |---|---|
 | Scroll | Zoom in/out |
 | Drag background | Pan |
-| Click a node | Highlight all its direct connections |
+| Click a node | Highlight all its direct connections & populate the Detailed Linkage View |
+| Click selected node again | Deselect |
 | Shift + drag | Box-select a subgraph |
 | Double-click a node | Open detail panel (name, type, genre, year, notable) |
 
-### Top-Right — Temporal Evolution View
-Three stacked bar charts showing per-decade trends:
-1. **Works count** — Other genres / Oceanus Folk / Sailor's works
-2. **Notable ratio** — % of chart-topping works (All / Oceanus Folk / Sailor)
-3. **Genre distribution** — Top 6 genres stacked
+Node fill colour encodes **node type**; ring stroke colour encodes **role** (Sailor = white ring, Her Works = magenta, Collaborators = cyan, Influence Sources = neon green, New-Gen Artists = deep pink).
 
-Click any decade bar to filter the network graph to that era.
+### Top-Right — Temporal Evolution View
+Three stacked bar / line charts showing per-decade trends:
+1. **Works count** — stacked bars: Other genres / Oceanus Folk / Sailor's works
+2. **Notable ratio** — line chart: % of chart-topping works across all works and Sailor's works
+3. **Genre distribution** — stacked bars: Other genres vs. Oceanus Folk, with OF share % labelled on each bar
 
 ### Bottom-Right — Detailed Linkage View
-Directed Sankey-style diagram for a selected node showing:
-- **Upstream** — creators (Person, MusicalGroup) connected via PerformerOf / ComposerOf / LyricistOf
-- **Downstream** — record labels connected via RecordedBy / DistributedBy
-- **Influence sources** — works connected via InStyleOf / InterpolatesFrom / CoverOf / LyricalReferenceTo / DirectlySamples
+A 3-column directed Sankey diagram populated when a node is clicked in the main graph. The content adapts to the selected node's role:
 
-Click any node in the main graph to populate this view.
+| Selected Role | Left column | Right column |
+|---|---|---|
+| **Sailor Shift** | Influence sources (works Sailor drew from) | Collaborators & new-gen artists |
+| **Sailor's Work** | Creators (PerformerOf/ComposerOf/LyricistOf) & influence sources | Record labels (RecordedBy/DistributedBy) |
+| **Collaborator** | Other connections | Shared works with Sailor |
+| **Influence Source** | Upstream works this source drew from | Sailor's works that reference this source |
+| **New-Gen Artist** | Incoming connections | Outgoing connections |
+| **Generic node** | Normal upstream edges | Downstream edges; MemberOf & InStyleOf shown with correct arrow direction |
+
+Arrow direction always reflects the true edge direction in the knowledge graph. Hover any node box for a tooltip with full metadata.
 
 ---
 
@@ -203,12 +208,7 @@ All files are written to `output/` after running the preprocessor.
 | `d3_timeline.json` | JSON | D3-ready decade timeline data |
 | `d3_linkage.json` | JSON | D3-ready upstream/downstream linkage data |
 | `graph_overview.png` | PNG | Node & edge type distribution charts |
-| `node_edge_distributions.png` | PNG | Pie + bar distribution charts |
-| `ego_network_summary.png` | PNG | Ego network role & influence breakdown |
 | `temporal_evolution.png` | PNG | 3-panel decade trend charts |
-| `influence_network_summary.png` | PNG | Influence reach & genre breakdown |
-| `oceanus_folk_community.png` | PNG | Community analysis (4-panel) |
-| `d3_export_summary.png` | PNG | Output file sizes & linkage summary |
 | `index.html` | HTML | D3.js interactive dashboard |
 
 ---

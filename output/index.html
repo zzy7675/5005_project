@@ -265,8 +265,6 @@ const state = {
   selectedDecade: null,
   egoData: null,
   timelineData: null,
-  linkageData: null,
-  ofCommunityData: null,
 };
 
 // ─────────────────────────────────────────────────────────────
@@ -293,18 +291,10 @@ function hideTooltip() { tooltip.style('display','none'); }
 // ─────────────────────────────────────────────────────────────
 Promise.all([
   d3.json('d3_main_graph.json').catch(()=>null),
-  d3.json('d3_influence_network.json').catch(()=>null),
   d3.json('d3_timeline.json').catch(()=>null),
-  d3.json('d3_linkage.json').catch(()=>null),
-  d3.json('d3_of_community.json').catch(()=>null),
-  d3.json('d3_sailor_influences.json').catch(()=>null),
-]).then(([ego, influence, timeline, linkage, ofCommunity, sailorInfluences]) => {
+]).then(([ego, timeline]) => {
   state.egoData = ego;
-  state.influenceData = influence;
   state.timelineData = timeline;
-  state.linkageData = linkage;
-  state.ofCommunityData = ofCommunity;
-  state.sailorInfluencesData = sailorInfluences;
 
   initControls();
   renderTimeline();

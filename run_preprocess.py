@@ -158,6 +158,37 @@ nodes_df.to_csv(f'{OUTPUT_DIR}/nodes_df.csv', index=False)
 edges_df.to_csv(f'{OUTPUT_DIR}/edges_df.csv', index=False)
 print(f'  nodes_df: {len(nodes_df)} rows  edges_df: {len(edges_df)} rows')
 
+# Plot: Node & Edge type distributions
+fig, axes = plt.subplots(1, 2, figsize=(14, 5), facecolor=BG_COLOR)
+fig.suptitle('Node & Edge Type Distributions', color='white', fontsize=13, fontweight='bold')
+node_vc = nodes_df['type'].value_counts()
+ax = axes[0]; ax.set_facecolor(PANEL_BG)
+wedge_colors = [NODE_COLORS.get(t, '#bab0ac') for t in node_vc.index]
+wedges, texts, autotexts = ax.pie(
+    node_vc.values, labels=node_vc.index, colors=wedge_colors,
+    autopct='%1.1f%%', startangle=140,
+    textprops={'color': 'white', 'fontsize': 9},
+    wedgeprops={'edgecolor': '#1a1a2e', 'linewidth': 1.5}
+)
+for at in autotexts:
+    at.set_color('#1a1a2e'); at.set_fontsize(8)
+ax.set_title(f'Node Types  (n={len(nodes_df):,})', color='white', fontsize=11)
+edge_vc = edges_df['type'].value_counts().sort_values()
+ax2 = axes[1]; ax2.set_facecolor(PANEL_BG)
+palette = plt.cm.tab20(np.linspace(0, 1, len(edge_vc)))
+bars = ax2.barh(edge_vc.index, edge_vc.values, color=palette, edgecolor='#303050', linewidth=0.5)
+for bar, cnt in zip(bars, edge_vc.values):
+    ax2.text(bar.get_width() + 30, bar.get_y() + bar.get_height()/2,
+             f'{cnt:,}', va='center', color='white', fontsize=8)
+ax2.set_xlabel('Count', color='#a0a0c0')
+ax2.set_title(f'Edge Types  (n={len(edges_df):,})', color='white', fontsize=11)
+ax2.tick_params(colors='#a0a0c0'); ax2.spines[:].set_color('#303050')
+ax2.set_xlim(0, edge_vc.max() * 1.18)
+plt.tight_layout()
+plt.savefig(f'{OUTPUT_DIR}/node_edge_distributions.png', dpi=120, bbox_inches='tight', facecolor=BG_COLOR)
+plt.close()
+print('  Saved node_edge_distributions.png')
+
 # ══════════════════════════════════════════════════════════════════════════════
 # STEP 3 – Sailor Shift Ego Network
 # ══════════════════════════════════════════════════════════════════════════════
@@ -237,7 +268,66 @@ with open(f'{OUTPUT_DIR}/sailor_ego_network.json', 'w', encoding='utf-8') as f:
 pd.DataFrame(collab_edges).to_csv(f'{OUTPUT_DIR}/sailor_collaborators.csv', index=False)
 pd.DataFrame(sailor_influenced_by).to_csv(f'{OUTPUT_DIR}/sailor_influenced_by.csv', index=False)
 pd.DataFrame(sailor_influences_others).to_csv(f'{OUTPUT_DIR}/sailor_influences_others.csv', index=False)
-print(f'  Sailor ID={SAILOR_ID}  Works={len(sailor_work_ids)}  Collaborators={len(collaborator_ids)}')
+
+# ── Ivy Echoes band member lookup (needs only nodes_df) ────────────────────
+IVY_ECHOES_NAMES = ['sailor shift','maya jensen','lila hartman','lilly hartman','jade thompson','sophie ramirez']
+ivy_echoes_ids = {}
+for _, row in nodes_df[nodes_df['type']=='Person'].iterrows():
+    nl = str(row.get('name','')).lower(); sl = str(row.get('stage_name','')).lower()
+    for ivy_name in IVY_ECHOES_NAMES:
+        if ivy_name in nl or ivy_name in sl:
+            ivy_echoes_ids[ivy_name] = int(row['node_id']); break
+
+print(f'  Sailor ID={SAILOR_ID}  Works={len(sailor_work_ids)}  Collaborators={len(collaborator_ids)}  Ivy Echoes={len(ivy_echoes_ids)}')
+
+# Plot: Ego Network Summary
+fig, axes = plt.subplots(1, 3, figsize=(16, 5), facecolor=BG_COLOR)
+fig.suptitle(f'Sailor Shift Ego Network Summary  (node_id={SAILOR_ID})',
+             color='white', fontsize=13, fontweight='bold')
+role_counts = {}
+for n in ego_subgraph.nodes():
+    r = ego_subgraph.nodes[n].get('role', 'other')
+    role_counts[r] = role_counts.get(r, 0) + 1
+ax = axes[0]; ax.set_facecolor(PANEL_BG)
+role_colors = {'sailor': '#ffdd00', 'sailor_work': ORANGE, 'collaborator': BLUE,
+               'influence_source': PURPLE, 'hop1_influenced': '#ff9da7',
+               'hop2_influenced': '#9c755f', 'influenced_artist': TEAL, 'other': '#404060'}
+rc_labels = list(role_counts.keys()); rc_vals = list(role_counts.values())
+rc_cols = [role_colors.get(r, '#bab0ac') for r in rc_labels]
+bars = ax.bar(rc_labels, rc_vals, color=rc_cols, edgecolor='#303050', linewidth=0.5)
+for bar, cnt in zip(bars, rc_vals):
+    ax.text(bar.get_x() + bar.get_width()/2, bar.get_height() + 0.5,
+            str(cnt), ha='center', color='white', fontsize=9)
+ax.set_title('Ego Node Roles', color='white', fontsize=11)
+ax.set_ylabel('Count', color='#a0a0c0')
+ax.tick_params(colors='#a0a0c0', axis='x', rotation=15); ax.spines[:].set_color('#303050')
+inf_df_plot = pd.DataFrame(sailor_influenced_by)
+ax2 = axes[1]; ax2.set_facecolor(PANEL_BG)
+if not inf_df_plot.empty:
+    et_vc = inf_df_plot['edge_type'].value_counts()
+    palette2 = [plt.cm.tab10(i) for i in range(len(et_vc))]
+    bars2 = ax2.barh(et_vc.index, et_vc.values, color=palette2, edgecolor='#303050')
+    for bar, cnt in zip(bars2, et_vc.values):
+        ax2.text(bar.get_width() + 0.3, bar.get_y() + bar.get_height()/2,
+                 str(cnt), va='center', color='white', fontsize=9)
+    ax2.set_xlim(0, et_vc.max() * 1.2)
+ax2.set_title(f'Influence Types → Sailor\n({len(inf_df_plot)} total)', color='white', fontsize=11)
+ax2.set_xlabel('Count', color='#a0a0c0'); ax2.tick_params(colors='#a0a0c0'); ax2.spines[:].set_color('#303050')
+ax3 = axes[2]; ax3.set_facecolor(PANEL_BG)
+if not inf_df_plot.empty and 'influenced_by_genre' in inf_df_plot.columns:
+    genre_vc = inf_df_plot['influenced_by_genre'].dropna().replace('', np.nan).dropna().value_counts().head(10)
+    palette3 = plt.cm.tab20(np.linspace(0, 1, len(genre_vc)))
+    bars3 = ax3.barh(genre_vc.index, genre_vc.values, color=palette3, edgecolor='#303050')
+    for bar, cnt in zip(bars3, genre_vc.values):
+        ax3.text(bar.get_width() + 0.2, bar.get_y() + bar.get_height()/2,
+                 str(cnt), va='center', color='white', fontsize=8)
+    ax3.set_xlim(0, genre_vc.max() * 1.2)
+ax3.set_title('Top Genres Influencing Sailor', color='white', fontsize=11)
+ax3.set_xlabel('Count', color='#a0a0c0'); ax3.tick_params(colors='#a0a0c0'); ax3.spines[:].set_color('#303050')
+plt.tight_layout()
+plt.savefig(f'{OUTPUT_DIR}/ego_network_summary.png', dpi=120, bbox_inches='tight', facecolor=BG_COLOR)
+plt.close()
+print('  Saved ego_network_summary.png')
 
 # ══════════════════════════════════════════════════════════════════════════════
 # STEP 4 – Temporal Analysis
@@ -321,56 +411,56 @@ plt.close()
 print(f'  OF works: {len(of_df)}  Sailor works: {len(work_rows)}')
 
 # ══════════════════════════════════════════════════════════════════════════════
-# STEP 5 – Influence Network
+# STEP 5 – Influence Network Summary Plot
 # ══════════════════════════════════════════════════════════════════════════════
-print('Step 5: Building influence network...')
-IVY_ECHOES_NAMES = ['sailor shift','maya jensen','lila hartman','lilly hartman','jade thompson','sophie ramirez']
-ivy_echoes_ids = {}
-for _, row in nodes_df[nodes_df['type']=='Person'].iterrows():
-    nl = str(row.get('name','')).lower(); sl = str(row.get('stage_name','')).lower()
-    for ivy_name in IVY_ECHOES_NAMES:
-        if ivy_name in nl or ivy_name in sl:
-            ivy_echoes_ids[ivy_name] = int(row['node_id']); break
+print('Step 5: Influence network summary...')
 
-hop1_influenced_ids = {r['influenced_work_id'] for r in sailor_influences_others}
-hop2_influenced_ids = set()
-for work_id in hop1_influenced_ids:
-    for src, _, attrs in G.in_edges(work_id, data=True):
-        if attrs.get('type') in INFLUENCE_EDGE_TYPES:
-            hop2_influenced_ids.add(src)
-hop2_influenced_ids -= hop1_influenced_ids
+# Plot: Influence Network Summary — repurposed panels since hop-1/hop-2 = 0 in this dataset
+fig, axes = plt.subplots(1, 3, figsize=(16, 5), facecolor=BG_COLOR)
+fig.suptitle('Sailor Shift — Influence & Collaboration Summary', color='white', fontsize=13, fontweight='bold')
 
-def get_artists_of_works(work_ids):
-    result = {}
-    for wid in work_ids:
-        artists = [src for src,_,attrs in G.in_edges(wid,data=True)
-                   if attrs.get('type') in WORK_EDGE_TYPES and G.nodes[src].get('type') in ('Person','MusicalGroup')]
-        result[wid] = artists
-    return result
+# Panel 1: Ego network node counts by role
+ax = axes[0]; ax.set_facecolor(PANEL_BG)
+ego_role_labels = ['Sailor', 'Her Works', 'Collaborators', 'Infl. Sources']
+ego_role_vals   = [1, len(sailor_work_ids), len(collaborator_ids), len(influence_source_ids)]
+ego_role_colors = ['#ffdd00', ORANGE, BLUE, PURPLE]
+bars = ax.bar(ego_role_labels, ego_role_vals, color=ego_role_colors, edgecolor='#303050', lw=0.5)
+for bar, cnt in zip(bars, ego_role_vals):
+    ax.text(bar.get_x() + bar.get_width()/2, bar.get_height() + 0.5,
+            str(cnt), ha='center', color='white', fontsize=10)
+ax.set_title('Ego Network Composition', color='white', fontsize=11)
+ax.set_ylabel('Count', color='#a0a0c0')
+ax.tick_params(colors='#a0a0c0', axis='x', labelsize=9); ax.spines[:].set_color('#303050')
 
-hop1_artists = get_artists_of_works(hop1_influenced_ids)
-hop2_artists = get_artists_of_works(hop2_influenced_ids)
-all_influenced_artist_ids = set()
-for artists in hop1_artists.values(): all_influenced_artist_ids.update(artists)
-for artists in hop2_artists.values(): all_influenced_artist_ids.update(artists)
+# Panel 2: Influence edge types (what Sailor's works reference)
+ax2 = axes[1]; ax2.set_facecolor(PANEL_BG)
+inf_df_p = pd.DataFrame(sailor_influenced_by)
+if not inf_df_p.empty:
+    et_vc2 = inf_df_p['edge_type'].value_counts()
+    palette2 = [plt.cm.tab10(i) for i in range(len(et_vc2))]
+    bars2 = ax2.barh(et_vc2.index, et_vc2.values, color=palette2, edgecolor='#303050')
+    for bar, cnt in zip(bars2, et_vc2.values):
+        ax2.text(bar.get_width() + 0.3, bar.get_y() + bar.get_height()/2,
+                 str(cnt), va='center', color='white', fontsize=9)
+    ax2.set_xlim(0, et_vc2.max() * 1.2)
+ax2.set_title(f'Influence Edge Types (Sailor → Sources)\n({len(inf_df_p)} references)', color='white', fontsize=11)
+ax2.set_xlabel('Count', color='#a0a0c0'); ax2.tick_params(colors='#a0a0c0'); ax2.spines[:].set_color('#303050')
 
-influence_node_ids = ({SAILOR_ID} | sailor_work_ids | hop1_influenced_ids |
-                      hop2_influenced_ids | all_influenced_artist_ids | set(ivy_echoes_ids.values()))
-inf_subgraph = G.subgraph(influence_node_ids).copy()
-for n in inf_subgraph.nodes():
-    if n == SAILOR_ID:                      inf_subgraph.nodes[n]['role'] = 'sailor'
-    elif n in sailor_work_ids:              inf_subgraph.nodes[n]['role'] = 'sailor_work'
-    elif n in hop1_influenced_ids:          inf_subgraph.nodes[n]['role'] = 'hop1_influenced'
-    elif n in hop2_influenced_ids:          inf_subgraph.nodes[n]['role'] = 'hop2_influenced'
-    elif n in all_influenced_artist_ids:    inf_subgraph.nodes[n]['role'] = 'influenced_artist'
-    elif n in set(ivy_echoes_ids.values()): inf_subgraph.nodes[n]['role'] = 'ivy_echoes'
-    else:                                   inf_subgraph.nodes[n]['role'] = 'other'
-
-inf_nodes = [{'id':n,**{k:safe_val(v) for k,v in attrs.items()}} for n,attrs in inf_subgraph.nodes(data=True)]
-inf_edges = [{'source':u,'target':v,**{k:safe_val(v2) for k,v2 in attrs.items()}} for u,v,attrs in inf_subgraph.edges(data=True)]
-with open(f'{OUTPUT_DIR}/influence_network.json','w',encoding='utf-8') as f:
-    json.dump({'nodes':inf_nodes,'links':inf_edges,'ivy_echoes_ids':ivy_echoes_ids,'sailor_id':SAILOR_ID},f,ensure_ascii=False,default=str)
-print(f'  Hop-1: {len(hop1_influenced_ids)}  Hop-2: {len(hop2_influenced_ids)}  Artists: {len(all_influenced_artist_ids)}')
+# Panel 3: Ivy Echoes members
+ax3 = axes[2]; ax3.set_facecolor(PANEL_BG); ax3.axis('off')
+ivy_text = 'Ivy Echoes Members Found:\n\n'
+for name, nid in ivy_echoes_ids.items():
+    ivy_text += f'  • {name.title()}  (id={nid})\n'
+if not ivy_echoes_ids:
+    ivy_text += '  (none found)'
+ax3.text(0.05, 0.95, ivy_text, transform=ax3.transAxes, color='white', fontsize=10,
+         va='top', fontfamily='monospace',
+         bbox=dict(boxstyle='round', facecolor='#0f3460', edgecolor=ACCENT, alpha=0.9))
+ax3.set_title('Ivy Echoes Band Members', color='white', fontsize=11)
+plt.tight_layout()
+plt.savefig(f'{OUTPUT_DIR}/influence_network_summary.png', dpi=120, bbox_inches='tight', facecolor=BG_COLOR)
+plt.close()
+print('  Saved influence_network_summary.png')
 
 # ══════════════════════════════════════════════════════════════════════════════
 # STEP 6 – Oceanus Folk Community
@@ -384,7 +474,9 @@ for wid in of_work_ids:
             of_artist_ids.add(src); of_artist_work_map.setdefault(src,[]).append(wid)
 
 direct_of_collabs = of_artist_ids & collaborator_ids
-indirect_of_influenced = of_artist_ids & all_influenced_artist_ids
+# No incoming influence edges to Sailor's works in this dataset → always empty
+all_influenced_artist_ids = set()
+indirect_of_influenced = set()
 SAILOR_BREAKTHROUGH_YEAR = 2028
 new_gen_artist_ids = set()
 for artist_id in of_artist_ids:
@@ -436,6 +528,64 @@ with open(f'{OUTPUT_DIR}/oceanus_folk_community.json','w',encoding='utf-8') as f
         'genres_influenced':of_spread_df['referencing_genre'].value_counts().to_dict() if not of_spread_df.empty else {}
     },f,ensure_ascii=False,default=str)
 print(f'  OF artists: {len(of_artist_ids)}  New-gen: {len(new_gen_artist_ids)}  Spread: {len(of_spread_df)}')
+
+# Plot: Oceanus Folk Community
+fig, axes = plt.subplots(2, 2, figsize=(15, 10), facecolor=BG_COLOR)
+fig.suptitle('Oceanus Folk Community Analysis', color='white', fontsize=14, fontweight='bold')
+ax = axes[0, 0]; ax.set_facecolor(PANEL_BG)
+summary_labels = ['Direct Sailor\nCollabs', 'Sailor-Influenced', 'New Generation', 'Other OF Artists']
+other_of = len(of_artist_ids) - len(direct_of_collabs) - len(indirect_of_influenced) - len(new_gen_artist_ids)
+summary_vals = [len(direct_of_collabs), len(indirect_of_influenced), len(new_gen_artist_ids), max(0, other_of)]
+summary_colors = [ACCENT, ORANGE, GREEN, '#404060']
+wedges, texts, autotexts = ax.pie(
+    summary_vals, labels=summary_labels, colors=summary_colors,
+    autopct='%1.1f%%', startangle=90, pctdistance=0.75,
+    textprops={'color': 'white', 'fontsize': 8},
+    wedgeprops={'edgecolor': '#1a1a2e', 'linewidth': 1.5, 'width': 0.6}
+)
+for at in autotexts: at.set_color('#1a1a2e'); at.set_fontsize(7)
+ax.text(0, 0, f'{len(of_artist_ids)}\nArtists', ha='center', va='center',
+        color='white', fontsize=11, fontweight='bold')
+ax.set_title('OF Artist Community Breakdown', color='white', fontsize=11)
+ax2 = axes[0, 1]; ax2.set_facecolor(PANEL_BG)
+if not of_artist_df.empty and 'first_of_work_year' in of_artist_df.columns:
+    debut_years = of_artist_df['first_of_work_year'].dropna()
+    ax2.hist(debut_years, bins=range(int(debut_years.min()), int(debut_years.max())+2),
+             color=BLUE, edgecolor='#1a1a2e', linewidth=0.5, alpha=0.85)
+    ax2.axvline(SAILOR_BREAKTHROUGH_YEAR, color=ACCENT, linewidth=2, linestyle='--',
+                label=f'Sailor Breakthrough ({SAILOR_BREAKTHROUGH_YEAR})')
+    ax2.legend(fontsize=8, facecolor=PANEL_BG, edgecolor='#303050', labelcolor='white')
+ax2.set_xlabel('First OF Work Year', color='#a0a0c0'); ax2.set_ylabel('Number of Artists', color='#a0a0c0')
+ax2.set_title('OF Artist Debut Year Distribution', color='white', fontsize=11)
+ax2.tick_params(colors='#a0a0c0'); ax2.spines[:].set_color('#303050')
+ax3 = axes[1, 0]; ax3.set_facecolor(PANEL_BG)
+if not of_spread_df.empty:
+    genre_spread_vc = of_spread_df['referencing_genre'].value_counts().head(12)
+    palette3 = plt.cm.tab20(np.linspace(0, 1, len(genre_spread_vc)))
+    bars3 = ax3.barh(genre_spread_vc.index, genre_spread_vc.values, color=palette3, edgecolor='#303050')
+    for bar, cnt in zip(bars3, genre_spread_vc.values):
+        ax3.text(bar.get_width() + 0.3, bar.get_y() + bar.get_height()/2,
+                 str(cnt), va='center', color='white', fontsize=8)
+    ax3.set_xlim(0, genre_spread_vc.max() * 1.2)
+ax3.set_title('Genres Influenced by Oceanus Folk', color='white', fontsize=11)
+ax3.set_xlabel('Number of Referencing Works', color='#a0a0c0')
+ax3.tick_params(colors='#a0a0c0'); ax3.spines[:].set_color('#303050')
+ax4 = axes[1, 1]; ax4.set_facecolor(PANEL_BG)
+if not of_spread_df.empty and 'referencing_year' in of_spread_df.columns:
+    spread_years = pd.to_numeric(of_spread_df['referencing_year'], errors='coerce').dropna()
+    spread_decades = (spread_years // 10 * 10).value_counts().sort_index()
+    ax4.bar(spread_decades.index, spread_decades.values, width=8,
+            color=GREEN, edgecolor='#1a1a2e', linewidth=0.5, alpha=0.85)
+    ax4.axvline(SAILOR_BREAKTHROUGH_YEAR, color=ACCENT, linewidth=2, linestyle='--',
+                label=f'Sailor Breakthrough ({SAILOR_BREAKTHROUGH_YEAR})')
+    ax4.legend(fontsize=8, facecolor=PANEL_BG, edgecolor='#303050', labelcolor='white')
+ax4.set_xlabel('Decade', color='#a0a0c0'); ax4.set_ylabel('Cross-Genre References', color='#a0a0c0')
+ax4.set_title('OF Influence Spread Over Time', color='white', fontsize=11)
+ax4.tick_params(colors='#a0a0c0'); ax4.spines[:].set_color('#303050')
+plt.tight_layout()
+plt.savefig(f'{OUTPUT_DIR}/oceanus_folk_community.png', dpi=120, bbox_inches='tight', facecolor=BG_COLOR)
+plt.close()
+print('  Saved oceanus_folk_community.png')
 
 # ══════════════════════════════════════════════════════════════════════════════
 # STEP 7 – D3.js Data Export
@@ -496,24 +646,6 @@ with open(f'{OUTPUT_DIR}/d3_main_graph.json','w',encoding='utf-8') as f:
     json.dump({'nodes':d3_main_nodes,'links':d3_main_edges,'sailor_id':SAILOR_ID,
                'node_color_legend':NODE_COLORS_D3,'edge_color_legend':EDGE_COLORS_D3},f,ensure_ascii=False,default=str)
 
-# D3 Influence Network
-d3_inf_nodes = []
-for n, attrs in inf_subgraph.nodes(data=True):
-    nt = attrs.get('type','unknown'); role = attrs.get('role','other')
-    d3_inf_nodes.append({'id':n,'label':attrs.get('name',str(n)),'type':nt,'role':role,
-        'color':NODE_COLORS_D3.get(nt,NODE_COLORS_D3['unknown']),'size':ROLE_SIZE.get(role,8),
-        'genre':attrs.get('genre'),'notable':safe_val(attrs.get('notable')),
-        'release_date':safe_val(attrs.get('release_date')),'notoriety_date':safe_val(attrs.get('notoriety_date')),
-        'stage_name':attrs.get('stage_name')})
-d3_inf_edges = []
-for u,v,attrs in inf_subgraph.edges(data=True):
-    et = attrs.get('type','unknown')
-    d3_inf_edges.append({'source':u,'target':v,'type':et,'color':EDGE_COLORS_D3.get(et,EDGE_COLORS_D3['unknown'])})
-with open(f'{OUTPUT_DIR}/d3_influence_network.json','w',encoding='utf-8') as f:
-    json.dump({'nodes':d3_inf_nodes,'links':d3_inf_edges,'sailor_id':SAILOR_ID,
-               'ivy_echoes_ids':ivy_echoes_ids,'node_color_legend':NODE_COLORS_D3,
-               'edge_color_legend':EDGE_COLORS_D3},f,ensure_ascii=False,default=str)
-
 # D3 Timeline
 from collections import defaultdict
 timeline_records = []
@@ -543,177 +675,48 @@ with open(f'{OUTPUT_DIR}/d3_timeline.json','w',encoding='utf-8') as f:
         for d,v in sorted(decade_agg.items())
     ]},f,ensure_ascii=False,default=str)
 
-# D3 Linkage
-linkage_records = []
-for work_id in sailor_work_ids:
-    wa = G.nodes[work_id]; wn = wa.get('name',str(work_id)); wt = wa.get('type','unknown')
-    for src,_,attrs in G.in_edges(work_id,data=True):
-        et = attrs.get('type','unknown')
-        if et in WORK_EDGE_TYPES:
-            sa = G.nodes[src]
-            linkage_records.append({'work_id':work_id,'work_name':wn,'work_type':wt,
-                'connected_id':src,'connected_name':sa.get('name',str(src)),
-                'connected_type':sa.get('type','unknown'),'edge_type':et,'direction':'upstream'})
-    for _,tgt,attrs in G.out_edges(work_id,data=True):
-        et = attrs.get('type','unknown')
-        if et in ('RecordedBy','DistributedBy'):
-            ta = G.nodes[tgt]
-            linkage_records.append({'work_id':work_id,'work_name':wn,'work_type':wt,
-                'connected_id':tgt,'connected_name':ta.get('name',str(tgt)),
-                'connected_type':ta.get('type','unknown'),'edge_type':et,'direction':'downstream'})
-        elif et in INFLUENCE_EDGE_TYPES:
-            ta = G.nodes[tgt]
-            linkage_records.append({'work_id':work_id,'work_name':wn,'work_type':wt,
-                'connected_id':tgt,'connected_name':ta.get('name',str(tgt)),
-                'connected_type':ta.get('type','unknown'),'edge_type':et,'direction':'influence_source'})
-with open(f'{OUTPUT_DIR}/d3_linkage.json','w',encoding='utf-8') as f:
-    json.dump({'sailor_id':SAILOR_ID,'sailor_work_ids':list(sailor_work_ids),'linkage':linkage_records},
-              f,ensure_ascii=False,default=str)
-
-# D3 OF Community — for context-sensitive bottom-right panel
-# 1. OF artist debut timeline (year → count, pre/post 2028)
-of_debut_by_year = defaultdict(lambda: {'pre_sailor':0,'post_sailor':0,'collab':0,'new_gen':0})
-for _, row in of_artist_df.iterrows():
-    yr = row.get('first_of_work_year')
-    if yr is None or pd.isna(yr): continue
-    yr = int(yr)
-    bucket = 'post_sailor' if yr >= SAILOR_BREAKTHROUGH_YEAR else 'pre_sailor'
-    of_debut_by_year[yr][bucket] += 1
-    if row.get('direct_collab_with_sailor'): of_debut_by_year[yr]['collab'] += 1
-    if row.get('new_generation'): of_debut_by_year[yr]['new_gen'] += 1
-
-# 2. Genre spread from OF (top genres that reference OF works, by year)
-genre_spread_by_year = defaultdict(lambda: defaultdict(int))
-if not of_spread_df.empty:
-    for _, row in of_spread_df.iterrows():
-        yr = row.get('referencing_year')
-        genre = row.get('referencing_genre','')
-        if yr and genre:
-            try: genre_spread_by_year[int(float(str(yr)))][genre] += 1
-            except: pass
-
-top_spread_genres = []
-if not of_spread_df.empty:
-    top_spread_genres = of_spread_df['referencing_genre'].value_counts().head(8).index.tolist()
-
-# 3. Influence sources breakdown (what influenced Sailor, by decade + genre)
-infl_src_df = pd.DataFrame(sailor_influenced_by)
-infl_src_by_decade = defaultdict(lambda: defaultdict(int))
-if not infl_src_df.empty:
-    for _, row in infl_src_df.iterrows():
-        yr = row.get('influenced_by_year')
-        genre = row.get('influenced_by_genre','') or 'Unknown'
-        etype = row.get('edge_type','')
-        if yr:
-            try:
-                dec = int(float(str(yr))) // 10 * 10
-                infl_src_by_decade[dec][genre] += 1
-            except: pass
-
-# 4. Collaborator summary (for Q2 panel)
-collab_df = pd.DataFrame(collab_edges)
-collab_summary = []
-if not collab_df.empty:
-    for cid in collaborator_ids:
-        cname = G.nodes[cid].get('name','')
-        ctype = G.nodes[cid].get('type','')
-        works = collab_df[collab_df['collaborator_id']==cid]['work_name'].tolist()
-        etypes = collab_df[collab_df['collaborator_id']==cid]['edge_type'].tolist()
-        collab_summary.append({
-            'id': cid, 'name': cname, 'type': ctype,
-            'works': list(set(works)), 'edge_types': list(set(etypes)),
-            'work_count': len(set(works))
-        })
-    collab_summary.sort(key=lambda x: -x['work_count'])
-
-d3_of_community = {
-    'sailor_id': SAILOR_ID,
-    'sailor_breakthrough_year': SAILOR_BREAKTHROUGH_YEAR,
-    'total_of_artists': len(of_artist_ids),
-    'total_of_works': len(of_work_ids),
-    'new_gen_count': len(new_gen_artist_ids),
-    'direct_collab_count': len(direct_of_collabs),
-    'genre_spread_count': len(of_spread_df),
-    # OF artist debut by year
-    'of_debut_by_year': [
-        {'year': yr, **counts}
-        for yr, counts in sorted(of_debut_by_year.items())
-    ],
-    # Genre spread by year (top genres)
-    'genre_spread_by_year': [
-        {'year': yr, **{g: cnt for g, cnt in genres.items()}}
-        for yr, genres in sorted(genre_spread_by_year.items())
-    ],
-    'top_spread_genres': top_spread_genres,
-    # Influence sources by decade
-    'infl_src_by_decade': [
-        {'decade': dec, 'genres': dict(genres)}
-        for dec, genres in sorted(infl_src_by_decade.items())
-    ],
-    # Collaborator summary
-    'collaborators': collab_summary,
-    # Top genres influenced by OF (total)
-    'genres_influenced': of_spread_df['referencing_genre'].value_counts().head(10).to_dict() if not of_spread_df.empty else {}
-}
-
-with open(f'{OUTPUT_DIR}/d3_of_community.json','w',encoding='utf-8') as f:
-    json.dump(d3_of_community, f, ensure_ascii=False, default=str)
-
-# D3 Sailor Influences — Q1: Who influenced Sailor, ranked + over time
-infl_df = pd.DataFrame(sailor_influenced_by)
-
-# Enrich with Sailor's work decade
-sailor_work_decade = {}
-for _, row in work_rows.iterrows():
-    wid = int(row['node_id'])
-    dec = row.get('decade')
-    if dec is not None and not pd.isna(dec):
-        sailor_work_decade[wid] = int(dec)
-
-ranked_sources = []
-if not infl_df.empty:
-    # Rank by how many of Sailor's works reference each source
-    src_counts = infl_df.groupby(['influenced_by_id','influenced_by_name','influenced_by_genre','influenced_by_type']).size().reset_index(name='ref_count')
-    src_counts = src_counts.sort_values('ref_count', ascending=False)
-    for _, row in src_counts.iterrows():
-        ranked_sources.append({
-            'id': safe_val(row['influenced_by_id']),
-            'name': row['influenced_by_name'],
-            'genre': row['influenced_by_genre'],
-            'type': row['influenced_by_type'],
-            'ref_count': int(row['ref_count'])
-        })
-
-# Influence by decade of Sailor's referencing work
-infl_by_sailor_decade = defaultdict(lambda: defaultdict(int))
-if not infl_df.empty:
-    for _, row in infl_df.iterrows():
-        wid = safe_val(row.get('sailor_work_id'))
-        genre = row.get('influenced_by_genre','') or 'Unknown'
-        etype = row.get('edge_type','')
-        dec = sailor_work_decade.get(wid)
-        if dec is not None:
-            infl_by_sailor_decade[dec][genre] += 1
-
-# Edge type breakdown
-edge_type_counts_infl = {}
-if not infl_df.empty:
-    for et, cnt in infl_df['edge_type'].value_counts().items():
-        edge_type_counts_infl[et] = int(cnt)
-
-d3_sailor_influences = {
-    'sailor_id': SAILOR_ID,
-    'total_influence_refs': len(infl_df),
-    'ranked_sources': ranked_sources[:40],  # top 40
-    'infl_by_sailor_decade': [
-        {'decade': dec, 'genres': dict(genres)}
-        for dec, genres in sorted(infl_by_sailor_decade.items())
-    ],
-    'edge_type_counts': edge_type_counts_infl
-}
-with open(f'{OUTPUT_DIR}/d3_sailor_influences.json', 'w', encoding='utf-8') as f:
-    json.dump(d3_sailor_influences, f, ensure_ascii=False, default=str)
-print(f'  d3_sailor_influences.json: {len(ranked_sources)} ranked sources, {len(infl_by_sailor_decade)} decades')
+# Plot: D3 Export Summary
+fig, axes = plt.subplots(1, 2, figsize=(14, 5), facecolor=BG_COLOR)
+fig.suptitle('D3.js Export Summary', color='white', fontsize=13, fontweight='bold')
+ax = axes[0]; ax.set_facecolor(PANEL_BG)
+file_sizes = {}
+for fname in sorted(os.listdir(OUTPUT_DIR)):
+    if fname.endswith('.json') or fname.endswith('.csv'):
+        fpath = os.path.join(OUTPUT_DIR, fname)
+        file_sizes[fname] = os.path.getsize(fpath) / 1024
+sorted_files = sorted(file_sizes.items(), key=lambda x: x[1])
+fnames_list = [f[0] for f in sorted_files]
+fsizes_list = [f[1] for f in sorted_files]
+palette_f = plt.cm.viridis(np.linspace(0.3, 0.9, len(fnames_list)))
+bars = ax.barh(fnames_list, fsizes_list, color=palette_f, edgecolor='#303050', lw=0.5)
+for bar, sz in zip(bars, fsizes_list):
+    ax.text(bar.get_width() + 1, bar.get_y() + bar.get_height()/2,
+            f'{sz:.1f} KB', va='center', color='white', fontsize=7)
+ax.set_xlabel('File Size (KB)', color='#a0a0c0')
+ax.set_title('Output File Sizes', color='white', fontsize=11)
+ax.tick_params(colors='#a0a0c0', labelsize=7); ax.spines[:].set_color('#303050')
+ax.set_xlim(0, max(fsizes_list) * 1.25)
+ax2 = axes[1]; ax2.set_facecolor(PANEL_BG)
+# Works per role in ego graph
+role_counts_d3 = {}
+for n_data in d3_main_nodes:
+    r = n_data.get('role','other')
+    role_counts_d3[r] = role_counts_d3.get(r, 0) + 1
+role_colors_d3 = {'sailor':'#ffdd00','sailor_work':ORANGE,'collaborator':BLUE,
+                  'influence_source':PURPLE,'new_gen_artist':'#e9c46a','other':'#404060'}
+rc2_labels = list(role_counts_d3.keys()); rc2_vals = list(role_counts_d3.values())
+rc2_cols = [role_colors_d3.get(r,'#bab0ac') for r in rc2_labels]
+bars2 = ax2.bar(rc2_labels, rc2_vals, color=rc2_cols, edgecolor='#303050', lw=0.5)
+for bar, cnt in zip(bars2, rc2_vals):
+    ax2.text(bar.get_x()+bar.get_width()/2, bar.get_height()+0.5,
+             str(cnt), ha='center', color='white', fontsize=9)
+ax2.set_title(f'd3_main_graph.json node roles\n({len(d3_main_nodes)} nodes, {len(d3_main_edges)} edges)',
+              color='white', fontsize=11)
+ax2.set_ylabel('Count', color='#a0a0c0'); ax2.tick_params(colors='#a0a0c0', axis='x', rotation=15); ax2.spines[:].set_color('#303050')
+plt.tight_layout()
+plt.savefig(f'{OUTPUT_DIR}/d3_export_summary.png', dpi=120, bbox_inches='tight', facecolor=BG_COLOR)
+plt.close()
+print('  Saved d3_export_summary.png')
 
 # ══════════════════════════════════════════════════════════════════════════════
 # FINAL SUMMARY
@@ -721,10 +724,8 @@ print(f'  d3_sailor_influences.json: {len(ranked_sources)} ranked sources, {len(
 print('\n' + '='*60)
 print('PREPROCESSING COMPLETE')
 print('='*60)
-print(f'd3_main_graph.json:        {len(d3_main_nodes)} nodes, {len(d3_main_edges)} edges')
-print(f'd3_influence_network.json: {len(d3_inf_nodes)} nodes, {len(d3_inf_edges)} edges')
-print(f'd3_timeline.json:          {len(timeline_records)} works, {len(decade_agg)} decades')
-print(f'd3_linkage.json:           {len(linkage_records)} linkage records')
+print(f'd3_main_graph.json:  {len(d3_main_nodes)} nodes, {len(d3_main_edges)} edges')
+print(f'd3_timeline.json:    {len(timeline_records)} works, {len(decade_agg)} decades')
 print(f'\nOutput directory: {os.path.abspath(OUTPUT_DIR)}')
 print('\nAll output files:')
 for fname in sorted(os.listdir(OUTPUT_DIR)):
